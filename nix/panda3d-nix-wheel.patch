@@ -1,0 +1,14 @@
+--- a/makepanda/makewheel.py
++++ b/makepanda/makewheel.py
+@@ -565,7 +565,10 @@ class WheelFile:
+         if GetVerbose():
+             print("Adding {0} from {1}".format(target_path, orig_source_path))
+ 
+-        zinfo = zipfile.ZipInfo.from_file(source_path, target_path)
++        # Nix store paths conventionally have a Unix-epoch mtime.  Accept and
++        # clamp those timestamps rather than rejecting dates before 1980.
++        zinfo = zipfile.ZipInfo.from_file(
++            source_path, target_path, strict_timestamps=False)
+         zinfo.compress_type = self.zip_file.compression
+         if zinfo.date_time > self.max_date_time:
+             zinfo.date_time = self.max_date_time

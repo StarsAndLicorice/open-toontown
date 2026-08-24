@@ -11,6 +11,7 @@ whitelist/
 *.jpg
 .idea
 venv/
+.venv/
 *.json
 !win32/.vscode/tasks.json
 !linux/.vscode/tasks.json
@@ -20,3 +21,4 @@ venv/
 PPYTHON_PATH
 local/
 errorCode
+astron/linux/astrond
