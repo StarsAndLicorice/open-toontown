@@ -47,8 +47,6 @@
           boost
           yaml-cpp
           libuv
-          bison
-          flex
         ];
 
         # Native extensions installed in .venv can find their Nix-provided

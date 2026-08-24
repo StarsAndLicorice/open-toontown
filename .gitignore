@@ -21,3 +21,4 @@ venv/
 PPYTHON_PATH
 local/
 errorCode
+astron/linux/astrond
