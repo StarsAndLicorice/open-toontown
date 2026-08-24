@@ -11,6 +11,7 @@ whitelist/
 *.jpg
 .idea
 venv/
+.venv/
 *.json
 !win32/.vscode/tasks.json
 !linux/.vscode/tasks.json
