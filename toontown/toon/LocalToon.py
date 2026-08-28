@@ -122,6 +122,9 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
             self.tossPieStart = None
             self.__presentingPie = 0
             self.__pieSequence = 0
+            self.__autoPieThrowing = False
+            self.__nextAutoPieTime = None
+            self.__autoPiePending = set()
             self.wantBattles = base.config.GetBool('want-battles', 1)
             self.seeGhosts = base.config.GetBool('see-ghosts', 0)
             wantNameTagAvIds = base.config.GetBool('want-nametag-avids', 0)
@@ -242,6 +245,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         from otp.friends import FriendInfo
 
     def disable(self):
+        self.__stopAutoPieThrowing(cancelPending=True)
         self.laffMeter.destroy()
         del self.laffMeter
         self.questMap.destroy()
@@ -387,6 +391,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         self.accept('time-delete-up', self.__endTossPie)
         self.accept('pieHit', self.__pieHit)
         self.accept('interrupt-pie', self.interruptPie)
+        self.accept('f5', self.__toggleAutoPieThrowing)
         QuestParser.init()
         return
 
@@ -624,6 +629,8 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         self.__endTossPie(globalClock.getFrameTime())
 
     def __beginTossPie(self, time):
+        if self.__autoPieThrowing:
+            return
         if self.tossPieStart != None:
             return
         if not self.allowPies:
@@ -723,6 +730,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         if pie and pie.getT() < 14.0 / 24.0:
             del self.pieTracks[self.__pieSequence]
             pie.pause()
+            self.__autoPiePending.discard(self.__pieSequence)
         if wasPresentingPie:
             self.restoreAnimationAfterPie()
 
@@ -733,9 +741,14 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
     def localTossPie(self, power):
         if not self.__presentingPie:
             return
+        self.__startLocalPieToss(power)
+        return
+
+    def __startLocalPieToss(self, power, timestamp32=None, startTime=0.0, auto=False):
         pos = self.getPos()
         hpr = self.getHpr()
-        timestamp32 = globalClockDelta.getFrameNetworkTime(bits=32)
+        if timestamp32 is None:
+            timestamp32 = globalClockDelta.getFrameNetworkTime(bits=32)
         sequence = self.__pieSequence
         if self.tossTrack:
             tossTrack = self.tossTrack
@@ -749,13 +762,19 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
             splatTrack = self.splatTracks[sequence]
             del self.splatTracks[sequence]
             splatTrack.finish()
+        if auto:
+            self.__autoPiePending.add(sequence)
         self.makePiePowerMeter()
         self.__piePowerMeter['value'] = power
         self.__piePowerMeter.show()
         self.__piePowerMeterSequence = sequence
         pieBubble = self.getPieBubble().instanceTo(NodePath())
 
-        def pieFlies(self = self, pos = pos, hpr = hpr, sequence = sequence, power = power, timestamp32 = timestamp32, pieBubble = pieBubble):
+        def pieFlies(self = self, pos = pos, hpr = hpr, sequence = sequence, power = power, timestamp32 = timestamp32, pieBubble = pieBubble, auto = auto):
+            if auto:
+                self.__autoPiePending.discard(sequence)
+            if self.numPies == 0:
+                return
             self.sendUpdate('tossPie', [pos[0],
              pos[1],
              pos[2],
@@ -775,11 +794,82 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         toss = Sequence(toss)
         self.presentingPie = True
         self.tossTrack = toss
-        toss.start()
+        toss.start(startTime)
         pie = Sequence(pie, Func(base.cTrav.removeCollider, pieBubble), Func(self.pieFinishedFlying, sequence))
         self.pieTracks[sequence] = pie
-        pie.start()
+        pie.start(startTime)
         return
+
+    def __toggleAutoPieThrowing(self):
+        if self.__autoPieThrowing:
+            self.__stopAutoPieThrowing()
+            self.setSystemMessage(0, 'Automatic pie throwing disabled.', WhisperPopup.WTSystem)
+            return
+        if not self.allowPies:
+            self.setSystemMessage(0, 'Pie throwing is not available here.', WhisperPopup.WTSystem)
+            return
+        if self.numPies == 0:
+            messenger.send('outOfPies')
+            return
+        # A previous automatic toss may still be winding up after F5 was
+        # toggled off.  Do not cancel it when automatic throwing is re-enabled.
+        if self.__pieSequence not in self.__autoPiePending:
+            self.interruptPie()
+        self.__autoPieThrowing = True
+        self.__nextAutoPieTime = globalClock.getFrameTime()
+        taskMgr.add(self.__updateAutoPieThrowing, self.uniqueName('autoPieThrowing'))
+        self.setSystemMessage(0, 'Automatic pie throwing enabled.', WhisperPopup.WTSystem)
+
+    def __stopAutoPieThrowing(self, cancelPending=False):
+        self.__autoPieThrowing = False
+        self.__nextAutoPieTime = None
+        taskMgr.remove(self.uniqueName('autoPieThrowing'))
+        if not cancelPending:
+            return
+        pendingSequences = self.__autoPiePending
+        self.__autoPiePending = set()
+        for sequence in pendingSequences:
+            pieTrack = self.pieTracks.pop(sequence, None)
+            if pieTrack:
+                pieTrack.pause()
+        if self.__pieSequence in pendingSequences and self.tossTrack:
+            tossTrack = self.tossTrack
+            self.tossTrack = None
+            tossTrack.finish()
+        if pendingSequences and self.__piePowerMeter:
+            self.__piePowerMeter.hide()
+
+    def __updateAutoPieThrowing(self, task):
+        if not self.allowPies or self.numPies == 0:
+            self.__stopAutoPieThrowing(cancelPending=True)
+            return Task.done
+
+        now = globalClock.getFrameTime()
+        interval = max(ToontownGlobals.PieThrowingInterval, 0.0)
+        if interval == 0.0:
+            throwsDue = 1
+            self.__nextAutoPieTime = now
+        else:
+            throwsDue = int(math.floor((now - self.__nextAutoPieTime) / interval)) + 1
+            if throwsDue <= 0:
+                return Task.cont
+
+        # Bound pathological catch-up after a long stall or an extremely small
+        # configured interval.  The deadline remains behind, so later frames
+        # continue catching up rather than silently dropping throws.
+        throwsDue = min(throwsDue, 256)
+        if self.numPies != ToontownGlobals.FullPies:
+            throwsDue = min(throwsDue, max(self.numPies - len(self.__autoPiePending), 0))
+
+        for unused in range(throwsDue):
+            scheduledTime = self.__nextAutoPieTime
+            self.__pieSequence = self.__pieSequence + 1 & 255
+            timestamp32 = globalClockDelta.localToNetworkTime(scheduledTime, bits=32)
+            self.__startLocalPieToss(0, timestamp32, max(now - scheduledTime, 0.0), auto=True)
+            if interval > 0.0:
+                self.__nextAutoPieTime += interval
+
+        return Task.cont
 
     def pieFinishedFlying(self, sequence):
         DistributedToon.DistributedToon.pieFinishedFlying(self, sequence)
@@ -827,6 +917,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         self.updatePieButton()
 
     def endAllowPies(self):
+        self.__stopAutoPieThrowing(cancelPending=True)
         self.allowPies = 0
         self.updatePieButton()
 

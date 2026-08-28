@@ -167,6 +167,12 @@ Sets how many seconds must pass before the caller can begin another pie throw.
 The default is `15 / 24`, or `0.625` seconds. This does not alter when the pie
 leaves the hand, its animation timing, or its projectile timing.
 
+While pie throwing is available, press F5 to toggle automatic 0%-power throws.
+The automatic cadence uses absolute deadlines, so a late rendering frame does
+not shift subsequent throws later. If several deadlines pass between frames,
+the missed throws are caught up on the next frame. Toggling automatic throwing
+off stops scheduling new pies but allows pending throw animations to finish.
+
 Example: `~pieinterval 0.25`
 
 ### `SetLawyerAttackChance <percent>`
