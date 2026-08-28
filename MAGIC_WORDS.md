@@ -172,6 +172,15 @@ The automatic cadence uses absolute deadlines, so a late rendering frame does
 not shift subsequent throws later. If several deadlines pass between frames,
 the missed throws are caught up on the next frame. Toggling automatic throwing
 off stops scheduling new pies but allows pending throw animations to finish.
+It only begins throws under the normal eligibility conditions, including while
+the Toon is grounded.
+
+Press F6 to queue one normally charged 100%-power throw. It waits until
+the pie interval has elapsed and the Toon is otherwise able to begin a throw.
+If automatic throwing is enabled, it pauses while the queued pie waits and
+charges, then resumes after that pie's interval has elapsed. If a rendering
+frame skips over the exact full-charge instant, the throw is still released at
+100% power.
 
 Example: `~pieinterval 0.25`
 
