@@ -789,6 +789,35 @@ class SetMaxCarry(MagicWord):
 
         toon.b_setMaxCarry(pouchSize)
         return f"Set gag pouch size to {pouchSize} for {toon.getName()}"
+
+class GivePies(MagicWord):
+    aliases = ["pies"]
+    desc = "Gives the target throwable pies."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("type", int, True), ("amount", int, False, -1)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        pieType = args[0]
+        numPies = args[1]
+
+        if pieType == -1:
+            toon.b_setNumPies(0)
+            return "Removed %s's pies." % toon.getName()
+        if not 0 <= pieType <= 7:
+            return "You can only specify between pie types 0 and 7."
+        if numPies == -1:
+            toon.b_setPieType(pieType)
+            toon.b_setNumPies(ToontownGlobals.FullPies)
+            return "Gave %s an infinite amount of pies." % toon.getName()
+        if not 0 <= numPies <= 99:
+            return "You can only specify between 0 and 99 pies."
+
+        toon.b_setPieType(pieType)
+        toon.b_setNumPies(numPies)
+        return "Gave %s %d throwable pie%s." % (
+            toon.getName(), numPies, '' if numPies == 1 else 's')
     
 class ToggleInstantKill(MagicWord):
     aliases = ["instantkill", "instakill"]

@@ -141,6 +141,17 @@ says 1 through 255, but the implementation accepts 0.)
 
 Example: `~~~pouch 80`
 
+### `GivePies <type> [amount=-1]`
+
+Alias: `pies`
+
+Gives the target throwable pies. Pie types range from 0 through 7: tart,
+fruit-pie slice, cream-pie slice, fruit pie, cream pie, birthday cake, wedding
+cake, and CJ evidence. Omitting `amount` gives an infinite supply; otherwise it
+must be from 0 through 99. A type of `-1` removes all throwable pies.
+
+Examples: `~~~pies 7`, `~~~pies 4 20`, `~~~pies -1`
+
 ### `ToggleInstantKill`
 
 Aliases: `instantkill`, `instakill`

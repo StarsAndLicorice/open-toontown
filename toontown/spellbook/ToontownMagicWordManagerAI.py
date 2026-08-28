@@ -188,8 +188,15 @@ class ToontownMagicWordManagerAI(DistributedObjectAI.DistributedObjectAI):
         # Get the name of the word in lowercase
         magicWord = magicWord.lower()
 
-        # Lookup the info for this word
-        magicWordInfo = MagicWordIndex[magicWord]
+        # Lookup the info for this word.  The client and AI can briefly have
+        # different registries during development (for example, when a new
+        # server-side word is added without restarting an existing district).
+        # Never allow an unknown client-provided name to crash the AI process.
+        magicWordInfo = MagicWordIndex.get(magicWord)
+        if magicWordInfo is None:
+            self.notify.warning('requestExecuteMagicWord: unknown Magic Word %r' % magicWord)
+            self.generateResponse(avId=avId, responseType="BadWord")
+            return
 
         # Make sure the invoker has a high enough Access Level to use this Magic Word in the first place
         # If they don't, them let them know about it
