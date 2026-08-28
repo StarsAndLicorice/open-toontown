@@ -4,6 +4,7 @@ from toontown.battle.BattleProps import *
 from direct.distributed.ClockDelta import *
 from direct.showbase.PythonUtil import Functor
 from direct.showbase.PythonUtil import StackTrace
+from direct.showbase.InputStateGlobal import inputState
 from direct.gui.DirectGui import *
 from panda3d.core import *
 from panda3d.otp import *
@@ -83,6 +84,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.bonusWeight = 0
         self.numJurorsLocalToonSeated = 0
         self.cannonIndex = -1
+        self.scaleRoundHeldInputs = {}
         return
 
     def announceGenerate(self):
@@ -455,6 +457,9 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             if self.debugPositions:
                 self.reflectedJuryBox.show()
         self.reflectedJuryBox.setZ(self.reflectedJuryBox.getZ() + ToontownGlobals.LawbotBossJuryBoxRelativeEndPos[2])
+        juryBoxOffset = Point3(*ToontownGlobals.LawbotBossJuryBoxRelativeEndPos)
+        self.juryBoxScaleRoundPos = self.juryBox.getPos() + juryBoxOffset
+        self.reflectedJuryBoxScaleRoundPos = self.reflectedJuryBox.getPos() + juryBoxOffset
 
     def loadPodium(self):
         self.podium = self.geom.find('**/Podium')
@@ -468,6 +473,104 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         if not self.reflectedPodium.isEmpty():
             if self.debugPositions:
                 self.reflectedPodium.show()
+        podiumOffset = Point3(0, 0, ToontownGlobals.LawbotBossBattleTwoPosHpr[2])
+        self.podiumScaleRoundPos = self.podium.getPos() + podiumOffset
+        self.reflectedPodiumScaleRoundPos = self.reflectedPodium.getPos() + podiumOffset
+
+    def prepareScaleRound(self, toonId, cannonIndex, numJurorsSeated):
+        """Apply scenery and local jury results skipped by the rsc magic word."""
+        movementInputs = ('forward', 'reverse', 'turnLeft', 'turnRight',
+                          'slideLeft', 'slideRight', 'jump', 'run')
+        self.scaleRoundHeldInputs = {
+            name: set(inputState._state.get(name, ()))
+            for name in movementInputs if inputState.isSet(name)
+        }
+
+        if self.juryBoxIval:
+            self.juryBoxIval.pause()
+            self.juryBoxIval = None
+        if self.juryTimer:
+            self.juryTimer.destroy()
+            self.juryTimer = None
+
+        self.juryBox.setPos(self.juryBoxScaleRoundPos)
+        self.reflectedJuryBox.setPos(self.reflectedJuryBoxScaleRoundPos)
+        self.podium.setPos(self.podiumScaleRoundPos)
+        self.reflectedPodium.setPos(self.reflectedPodiumScaleRoundPos)
+
+        # The normal introduction movie removes the disguises shortly before
+        # BattleOne.  A direct jump must perform the final state change itself.
+        for involvedToonId in self.involvedToons:
+            involvedToon = self.cr.doId2do.get(involvedToonId)
+            if involvedToon:
+                involvedToon.takeOffSuit()
+                involvedToon.normalEyes()
+                involvedToon.blinkEyes()
+
+        self.numToonJurorsSeated = numJurorsSeated
+        if base.localAvatar.doId == toonId:
+            self.cannonIndex = cannonIndex
+
+    def resetScaleRound(self, bossDamage):
+        """Reset all client-side state belonging to an active scale round."""
+        self.cleanupAttacks()
+        self.cleanupFlash()
+        self.cleanupPanFlash()
+        taskMgr.remove('RecoverBossDamage')
+        self.everThrownPie = 0
+        if self.bonusTimer:
+            self.bonusTimer.destroy()
+            self.bonusTimer = None
+        self.setDizzy(0)
+        self.attackCode = ToontownGlobals.BossCogNoAttack
+        self.attackAvId = 0
+        self.stopAnimate()
+        self.forwardBody()
+        self.forwardHead()
+        self.bubbleL.stash()
+        self.bubbleR.stash()
+        self.bubbleF.stash()
+        self.raised = 1
+        self.forward = 1
+        self.happy = 1
+        self.nowRaised = 1
+        self.nowForward = 1
+        self.nowHappy = 1
+        self.doAnimate(None, now=1)
+
+        self.setPosHpr(*ToontownGlobals.LawbotBossBattleThreePosHpr)
+        self.bossDamage = bossDamage
+        self.recoverRate = 0
+        self.recoverStartTime = globalClock.getFrameTime()
+        self.makeScaleReflectDamage()
+
+        for involvedToonId in self.involvedToons:
+            involvedToon = self.cr.doId2do.get(involvedToonId)
+            if involvedToon:
+                involvedToon.cleanupPies()
+        localAvatar.reparentTo(render)
+        localAvatar.stopSmooth()
+        localAvatar.setPos(-3, 0, 0)
+        camera.reparentTo(localAvatar)
+        camera.setPos(localAvatar.cameraPositions[0][0])
+        camera.setHpr(0, 0, 0)
+
+        # Movie mode releases and recreates the ControlManager's input
+        # watchers, which otherwise turns held keys into released keys.  Use
+        # the original input sources so their normal key-up events still clear
+        # these restored states.
+        for name, sources in self.scaleRoundHeldInputs.items():
+            for source in sources:
+                inputState.set(name, True, inputSource=source)
+        self.scaleRoundHeldInputs = {}
+
+        # PrepareBattleThree directly loops the neutral animation without
+        # updating Toon's movement-animation cache.  If that cache still says
+        # "run", continued forward input will move the Toon but leave the
+        # neutral animation playing.  Invalidate both cached results so the
+        # regular tracking task reapplies the correct animation and sound.
+        localAvatar.playingAnim = None
+        localAvatar.lastAction = None
 
     def loadCannons(self):
         pass
@@ -934,6 +1037,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
     def enterBattleThree(self):
         DistributedBossCog.DistributedBossCog.enterBattleThree(self)
         self.scaleNodePath.unstash()
+        self.countToonJurors()
+        _, self.bonusWeight, self.numJurorsLocalToonSeated = self.calculateWeightOfToon(base.localAvatar.doId)
         localAvatar.setPos(-3, 0, 0)
         camera.reparentTo(localAvatar)
         camera.setPos(localAvatar.cameraPositions[0][0])

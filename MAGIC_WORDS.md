@@ -270,6 +270,18 @@ the selected target.
 
 Examples: `~~~boss vp`, `~~~boss list`, `~~~boss join 0`, `~~~boss final`
 
+### `Rsc [seatedToons]`
+
+Advances the caller's current CJ battle directly to the scale round while
+putting the podium and jury box in their correct post-cannon positions. An
+optional value from 0 through 12 simulates that many Toon jurors having been
+seated by the caller. With no value, it uses 0 unless the CJ is already in the
+scale round, in which case the round is restarted and the current number of
+seated Toon jurors is kept. Supplying a value during the scale round restarts
+it using the newly simulated result.
+
+Examples: `~~~rsc`, `~~~rsc 8`
+
 ## World effects
 
 ### `Fireworks [name="newyear"] [hood=""]`

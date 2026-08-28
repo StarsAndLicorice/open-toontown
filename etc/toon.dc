@@ -2634,6 +2634,8 @@ dclass DistributedLawbotBoss : DistributedBossCog {
   toonGotHealed(uint32) broadcast;
   enteredBonusState() broadcast;
   setBattleDifficulty(uint8) broadcast ram;
+  prepareScaleRound(uint32, int8, uint8) broadcast;
+  resetScaleRound(uint16) broadcast;
 };
 
 dclass DistributedLawbotBossSuit : DistributedSuitBase {

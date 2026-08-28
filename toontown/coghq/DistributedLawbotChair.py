@@ -350,4 +350,7 @@ class DistributedLawbotChair(DistributedObject.DistributedObject, FSM.FSM):
     def setToonJurorIndex(self, newVal):
         if not self.toonJurorIndex == newVal:
             self.toonJurorIndex = newVal
-            self.loadToonJuror()
+            if newVal >= 0:
+                self.loadToonJuror()
+            else:
+                self.cleanupToonJuror()

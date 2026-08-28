@@ -843,6 +843,68 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
 
         return
 
+    def rushToScaleRound(self, toonId, numJurorsSeated):
+        """Put the CJ battle into the state produced by the cannon round.
+
+        In addition to changing the boss state, this sets up the jurors so the
+        requested number are credited to the Toon who invoked the magic word.
+        The client update fixes up scenery normally moved by the two preceding
+        rounds before BattleThree is entered.
+        """
+        self.__makeChairs()
+
+        cannonIndex = self.cannonIndexPerToon.get(toonId)
+        if cannonIndex is None:
+            try:
+                cannonIndex = sorted(self.involvedToons).index(toonId)
+            except ValueError:
+                cannonIndex = 0
+            self.cannonIndexPerToon[toonId] = cannonIndex
+
+        for index, chair in enumerate(self.chairs):
+            chair.stopCogs()
+            if index < numJurorsSeated:
+                chair.b_setToonJurorIndex(cannonIndex)
+                # requestToonJuror schedules the normal cannon-round Cog
+                # replacement.  rsc needs the completed jury state instead.
+                chair.b_setState('ToonJuror')
+            else:
+                chair.b_setToonJurorIndex(-1)
+                chair.b_setState('SuitJuror')
+
+        self.numToonJurorsSeated = numJurorsSeated
+        self.sendUpdate('prepareScaleRound', [toonId, cannonIndex, numJurorsSeated])
+
+        self.restartScaleRound()
+
+    def fixScaleRoundScenery(self):
+        """Correct skipped cannon-round scenery without changing jury credit."""
+        self.sendUpdate('prepareScaleRound', [0, -1, self.numToonJurorsSeated])
+
+    def restartScaleRound(self):
+        """Fully re-enter BattleThree, even when it is already current."""
+        self.takeAwayPies()
+        self.b_setAttackCode(ToontownGlobals.BossCogNoAttack)
+        self.hitCount = 0
+        self.bonusState = False
+        self.bonusTimeStarted = 0
+        self.numBonusStates = 0
+        self.numAreaAttacks = 0
+        self.lastAreaAttackTime = 0
+        self.weightPerToon = {}
+        taskMgr.remove(self.uniqueName('clearBonus'))
+
+        if self.getCurrentOrNextState() == 'BattleThree':
+            # FSMs do not re-enter their current state.  PrepareBattleThree is
+            # used as a short-lived transition so all BattleThree cleanup and
+            # initialization runs on both the AI and clients.
+            self.b_setState('PrepareBattleThree')
+        self.b_setState('BattleThree')
+        # enterBattleThree sends the initial damage before the state update.
+        # Send an explicit post-entry reset so clients apply all presentation
+        # state after their new BattleThree has been constructed.
+        self.sendUpdate('resetScaleRound', [self.bossDamage])
+
     def b_setBattleDifficulty(self, batDiff):
         self.setBattleDifficulty(batDiff)
         self.d_setBattleDifficulty(batDiff)

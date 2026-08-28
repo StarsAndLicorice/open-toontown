@@ -643,6 +643,46 @@ class BossBattle(MagicWord):
         boss.requestDelete()
         self.air.deallocateZone(bossZone)
 
+class Rsc(MagicWord):
+    desc = "Advance a CJ battle to the scale round."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("seatedToons", int, False, -1)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.suit.DistributedBossCogAI import AllBossCogs
+
+        boss = None
+        for bossCog in AllBossCogs:
+            if bossCog.isToonKnown(invoker.doId):
+                boss = bossCog
+                break
+
+        if boss is None:
+            return "You aren't in a boss battle."
+        if boss.dept != 'l':
+            return "The rsc magic word can only be used in a CJ battle."
+
+        requestedJurors = args[0]
+        scaleStates = ('BattleThree', 'NearVictory')
+        if requestedJurors == -1 and boss.getCurrentOrNextState() in scaleStates:
+            boss.fixScaleRoundScenery()
+            boss.restartScaleRound()
+            return "Restarted the CJ scale round with %d seated Toon juror%s." % (
+                boss.numToonJurorsSeated,
+                '' if boss.numToonJurorsSeated == 1 else 's')
+
+        if requestedJurors == -1:
+            requestedJurors = 0
+        if requestedJurors < 0 or requestedJurors > 12:
+            return "The seated Toon count must be between 0 and 12."
+
+        boss.acceptNewToons()
+        boss.rushToScaleRound(invoker.doId, requestedJurors)
+        return "Advanced the CJ to the scale round with %d Toon juror%s seated by %s." % (
+            requestedJurors,
+            '' if requestedJurors == 1 else 's',
+            invoker.getName())
+
 class GlobalTeleport(MagicWord):
     aliases = ["globaltp", "tpaccess"]
     desc = "Enables teleport access to all zones."
