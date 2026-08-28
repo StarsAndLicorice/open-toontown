@@ -176,6 +176,17 @@ Execution: client-side; self only
 
 Toggles the client's fast debug-running input state.
 
+### `ToggleFPS`
+
+Alias: `fps`
+
+Execution: client-side; self only
+
+Toggles a fixed-width meter in the top-right corner showing instantaneous FPS
+over a dark translucent background. Every 500 milliseconds it samples the
+most recently completed frame's duration and converts it directly to FPS,
+without averaging or smoothing.
+
 ### `AbortMinigame`
 
 Aliases: `exitgame`, `exitminigame`, `quitgame`, `quitminigame`, `skipgame`,
