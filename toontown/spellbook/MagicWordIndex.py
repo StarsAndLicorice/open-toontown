@@ -11,6 +11,7 @@
 
 import collections
 import json
+import math
 import random
 import re
 import time
@@ -1036,6 +1037,121 @@ class GivePies(MagicWord):
             numPies,
             "" if numPies == 1 else "s",
         )
+
+
+def _getGameplayConfig(toon):
+    from toontown.toonbase import ToontownGlobals
+
+    if not hasattr(toon, '_magicWordGameplayConfig'):
+        toon._magicWordGameplayConfig = {
+            'pieThrowingInterval': ToontownGlobals.PieThrowingInterval,
+            'toonForwardSpeed': OTPGlobals.ToonForwardSpeed,
+            'toonReverseSpeed': OTPGlobals.ToonReverseSpeed,
+            'toonRotateSpeed': OTPGlobals.ToonRotateSpeed,
+        }
+    return toon._magicWordGameplayConfig
+
+
+def _setClientGameplayConfig(command, toon, setting, value):
+    _getGameplayConfig(toon)[setting] = value
+    command.air.magicWordManager.sendUpdateToAvatarId(
+        toon.doId, 'applyGameplayConfig', [setting, repr(value)])
+
+
+class SetPieThrowingInterval(MagicWord):
+    aliases = ['pieinterval', 'piethrowinterval', 'piethrowdelay']
+    desc = "Sets the delay before the caller can begin throwing another pie."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('seconds', float, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        seconds = args[0]
+        if not math.isfinite(seconds) or seconds < 0.0:
+            return 'The pie throwing interval must be a finite, non-negative number.'
+        _setClientGameplayConfig(self, toon, 'pieThrowingInterval', seconds)
+        return 'Set the pie throwing interval to %g seconds.' % seconds
+
+
+class SetLawyerAttackChance(MagicWord):
+    aliases = ['lawyerattackchance', 'lawyerchance']
+    desc = "Sets the shard-wide chance that a CJ lawyer attacks instead of prosecuting."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('percent', int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        percent = args[0]
+        if not 0 <= percent <= 100:
+            return 'The lawyer attack chance must be between 0 and 100 percent.'
+        ToontownGlobals.LawbotBossLawyerChanceToAttack = percent
+        return 'Set the lawyer attack chance to %d%% for this shard.' % percent
+
+
+class SetToonForwardSpeed(MagicWord):
+    aliases = ['forwardspeed', 'forwardmovespeed']
+    desc = "Sets the caller's forward movement speed."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('speed', float, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        speed = args[0]
+        if not math.isfinite(speed) or speed < 0.0:
+            return 'Forward speed must be a finite, non-negative number.'
+        _setClientGameplayConfig(self, toon, 'toonForwardSpeed', speed)
+        return 'Set forward movement speed to %g.' % speed
+
+
+class SetToonReverseSpeed(MagicWord):
+    aliases = ['backwardsspeed', 'backwardspeed', 'reversespeed']
+    desc = "Sets the caller's backward movement speed."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('speed', float, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        speed = args[0]
+        if not math.isfinite(speed) or speed < 0.0:
+            return 'Backward speed must be a finite, non-negative number.'
+        _setClientGameplayConfig(self, toon, 'toonReverseSpeed', speed)
+        return 'Set backward movement speed to %g.' % speed
+
+
+class SetToonRotateSpeed(MagicWord):
+    aliases = ['rotationspeed', 'rotatespeed']
+    desc = "Sets the caller's rotation speed."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('speed', float, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        speed = args[0]
+        if not math.isfinite(speed) or speed < 0.0:
+            return 'Rotation speed must be a finite, non-negative number.'
+        _setClientGameplayConfig(self, toon, 'toonRotateSpeed', speed)
+        return 'Set rotation speed to %g degrees per second.' % speed
+
+
+class GameplayConfig(MagicWord):
+    aliases = ['configvalues', 'gameplayvalues', 'tuning']
+    desc = "Reports the current pie, lawyer, and Toon movement configuration."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        values = _getGameplayConfig(toon)
+        return (
+            'Pie interval: %g s; lawyer attack chance: %d%%; '
+            'forward speed: %g; rotation speed: %g deg/s; backward speed: %g.'
+            % (values['pieThrowingInterval'],
+               ToontownGlobals.LawbotBossLawyerChanceToAttack,
+               values['toonForwardSpeed'], values['toonRotateSpeed'],
+               values['toonReverseSpeed']))
 
 
 class ToggleInstantKill(MagicWord):

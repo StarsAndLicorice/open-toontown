@@ -27,6 +27,7 @@ PetLookatPetBitmask = BitMask32(256)
 PetLookatNonPetBitmask = BitMask32(512)
 BanquetTableBitmask = BitMask32(1024)
 FullPies = 65535
+PieThrowingInterval = 15.0 / 24.0
 CogHQCameraFar = 900.0
 CogHQCameraNear = 1.0
 CashbotHQCameraFar = 2000.0

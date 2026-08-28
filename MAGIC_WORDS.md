@@ -152,6 +152,61 @@ must be from 0 through 99. A type of `-1` removes all throwable pies.
 
 Examples: `~~~pies 7`, `~~~pies 4 20`, `~~~pies -1`
 
+## Gameplay tuning
+
+These commands affect only the caller unless noted otherwise. Forward,
+backward, and rotation speeds are independent values in the movement controls.
+Backward speed is called `ToonReverseSpeed` internally and is expressed as a
+positive speed magnitude.
+
+### `SetPieThrowingInterval <seconds>`
+
+Aliases: `pieinterval`, `piethrowinterval`, `piethrowdelay`
+
+Sets how many seconds must pass before the caller can begin another pie throw.
+The default is `15 / 24`, or `0.625` seconds. This does not alter when the pie
+leaves the hand, its animation timing, or its projectile timing.
+
+Example: `~pieinterval 0.25`
+
+### `SetLawyerAttackChance <percent>`
+
+Aliases: `lawyerattackchance`, `lawyerchance`
+
+Sets the shard-wide integer percentage chance, from 0 through 100, that a CJ
+lawyer attacks a Toon instead of prosecuting and healing the CJ. The default is
+50 percent.
+
+Example: `~lawyerchance 75`
+
+### `SetToonForwardSpeed <speed>`
+
+Aliases: `forwardspeed`, `forwardmovespeed`
+
+Sets the caller's non-negative forward movement speed. The default is 20.
+
+### `SetToonReverseSpeed <speed>`
+
+Aliases: `backwardsspeed`, `backwardspeed`, `reversespeed`
+
+Sets the caller's non-negative backward movement speed. The default is 10.
+
+### `SetToonRotateSpeed <speed>`
+
+Aliases: `rotationspeed`, `rotatespeed`
+
+Sets the caller's non-negative rotation speed in degrees per second. The
+default is 100.
+
+### `GameplayConfig`
+
+Aliases: `configvalues`, `gameplayvalues`, `tuning`
+
+Reports the caller's configured pie interval and movement speeds together with
+the shard's current lawyer attack chance.
+
+Example: `~tuning`
+
 ### `ToggleInstantKill`
 
 Aliases: `instantkill`, `instakill`

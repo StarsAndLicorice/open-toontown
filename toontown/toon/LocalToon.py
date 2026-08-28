@@ -728,7 +728,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
 
     def __pieInHand(self):
         pie = self.pieTracks.get(self.__pieSequence)
-        return pie and pie.getT() < 15.0 / 24.0
+        return pie and pie.getT() < ToontownGlobals.PieThrowingInterval
 
     def localTossPie(self, power):
         if not self.__presentingPie:

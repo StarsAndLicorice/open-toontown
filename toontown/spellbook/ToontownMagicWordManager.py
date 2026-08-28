@@ -259,6 +259,51 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
         else:
             self.generateResponse(responseType="SuccessNoResp", magicWord=word, args=args, affectRange=affectRange,
                                   affectType=affectType, affectExtra=affectExtra, lastClickedAvId=lastClickedAvId)
+
+    def applyGameplayConfig(self, setting, value):
+        from otp.otpbase import OTPGlobals
+        from toontown.toonbase import ToontownGlobals
+
+        try:
+            value = float(value)
+        except ValueError:
+            self.notify.warning('Ignoring invalid gameplay config value %r for %s' % (value, setting))
+            return
+
+        if setting == 'pieThrowingInterval':
+            ToontownGlobals.PieThrowingInterval = value
+            return
+
+        settingInfo = {
+            'toonForwardSpeed': ('ToonForwardSpeed', 'avatarControlForwardSpeed', 'oldForward'),
+            'toonReverseSpeed': ('ToonReverseSpeed', 'avatarControlReverseSpeed', 'oldReverse'),
+            'toonRotateSpeed': ('ToonRotateSpeed', 'avatarControlRotateSpeed', 'oldRotate'),
+        }.get(setting)
+        if settingInfo is None:
+            self.notify.warning('Ignoring unknown gameplay config setting %r' % setting)
+            return
+
+        globalName, controlName, disguiseName = settingInfo
+        setattr(OTPGlobals, globalName, value)
+        setattr(ToontownGlobals, globalName, value)
+
+        toon = base.localAvatar
+        if hasattr(toon, disguiseName):
+            setattr(toon, disguiseName, value)
+        for controls in toon.controlManager.controls.values():
+            forward = getattr(controls, 'avatarControlForwardSpeed', OTPGlobals.ToonForwardSpeed)
+            jump = getattr(controls, 'avatarControlJumpForce', OTPGlobals.ToonJumpForce)
+            reverse = getattr(controls, 'avatarControlReverseSpeed', OTPGlobals.ToonReverseSpeed)
+            rotate = getattr(controls, 'avatarControlRotateSpeed', OTPGlobals.ToonRotateSpeed)
+            values = {
+                'avatarControlForwardSpeed': forward,
+                'avatarControlReverseSpeed': reverse,
+                'avatarControlRotateSpeed': rotate,
+            }
+            values[controlName] = value
+            controls.setWalkSpeed(
+                values['avatarControlForwardSpeed'], jump,
+                values['avatarControlReverseSpeed'], values['avatarControlRotateSpeed'])
     
     def teleportResponse(self, loaderId, whereId, how, hoodId, zoneId, avId):
         # The AI tells the avatar to go somewhere.  This is probably in
