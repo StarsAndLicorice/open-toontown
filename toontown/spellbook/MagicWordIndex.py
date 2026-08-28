@@ -336,6 +336,28 @@ class ToggleFPS(MagicWord):
         return "Frame-rate meter shown."
 
 
+class SetMaxFps(MagicWord):
+    aliases = ["maxfps"]
+    desc = "Sets a client-side frame-rate cap; 0 removes it."
+    execLocation = MagicWordConfig.EXEC_LOC_CLIENT
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [("fps", float, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from panda3d.core import ClockObject
+
+        fps = args[0]
+        if not math.isfinite(fps) or fps < 0.0:
+            return "The maximum frame rate must be a finite, non-negative number."
+        if fps == 0.0:
+            globalClock.setMode(ClockObject.MNormal)
+            return "Frame-rate cap removed."
+
+        globalClock.setFrameRate(fps)
+        globalClock.setMode(ClockObject.MLimited)
+        return "Maximum frame rate set to %g FPS." % fps
+
+
 class MaxToon(MagicWord):
     aliases = ["max", "idkfa"]
     desc = "Maxes your target toon."

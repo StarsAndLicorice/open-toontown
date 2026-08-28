@@ -257,6 +257,17 @@ over a dark translucent background. Every 500 milliseconds it samples the
 most recently completed frame's duration and converts it directly to FPS,
 without averaging or smoothing.
 
+### `SetMaxFps <fps>`
+
+Alias: `maxfps`
+
+Execution: client-side; self only
+
+Sets Panda3D's maximum rendering frame rate to a finite, non-negative value.
+Pass `0` to remove the cap and restore the normal real-time clock mode.
+
+Examples: `~maxfps 60`, `~maxfps 0`
+
 ### `AbortMinigame`
 
 Aliases: `exitgame`, `exitminigame`, `quitgame`, `quitminigame`, `skipgame`,
