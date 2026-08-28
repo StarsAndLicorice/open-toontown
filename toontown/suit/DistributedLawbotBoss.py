@@ -249,6 +249,10 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         elapsed = now - self.recoverStartTime
         return max(self.bossDamage - self.recoverRate * elapsed / 60.0, 0)
 
+    def showScaleRoundTime(self, elapsedTime):
+        message = TTLocalizer.LawbotBossScaleRoundTime % elapsedTime
+        base.localAvatar.setSystemMessage(0, message, WhisperPopup.WTSystem)
+
     def __recoverBossDamage(self, task):
         self.notify.debug('----- __recoverBossDamage')
         if self.bossDamageMovie:

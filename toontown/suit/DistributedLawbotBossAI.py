@@ -51,6 +51,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.numBonusStates = 0
         self.battleThreeTimeStarted = 0
         self.battleThreeTimeInMin = 0
+        self.scaleRoundTimeReported = False
         self.numAreaAttacks = 0
         self.lastAreaAttackTime = 0
         self.weightPerToon = {}
@@ -96,6 +97,10 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         bossDamage = min(self.getBossDamage() + bossDamage, self.bossMaxDamage)
         self.b_setBossDamage(bossDamage, 0, 0)
         if self.bossDamage >= self.bossMaxDamage:
+            if not self.scaleRoundTimeReported:
+                elapsedTime = max(globalClock.getFrameTime() - self.battleThreeStart, 0.0)
+                self.scaleRoundTimeReported = True
+                self.sendUpdate('showScaleRoundTime', [elapsedTime])
             self.b_setState('Victory')
         else:
             self.__recordHit()
@@ -495,6 +500,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         if simbase.config.GetBool('lawbot-boss-cheat', 0):
             self.b_setBossDamage(ToontownGlobals.LawbotBossMaxDamage - 1, 0, 0)
         self.battleThreeStart = globalClock.getFrameTime()
+        self.scaleRoundTimeReported = False
         for toonId in self.involvedToons:
             toon = simbase.air.doId2do.get(toonId)
             if toon:

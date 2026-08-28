@@ -57,6 +57,7 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
         self.accept(OUTGOING_CHAT_MESSAGE_NAME, self.checkMagicWord)
         self.accept(CLICKED_NAMETAG_MESSAGE_NAME, self.__handleClickedNametag)
         self.accept(FOCUS_OUT_MESSAGE_NAME, self.__handleFocusOutNametag)
+        self.accept('f4', self.__executeRscHotkey)
 
     def disable(self):
         DistributedObject.DistributedObject.disable(self)
@@ -65,9 +66,13 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
         self.ignore(OUTGOING_CHAT_MESSAGE_NAME)
         self.ignore(CLICKED_NAMETAG_MESSAGE_NAME)
         self.ignore(FOCUS_OUT_MESSAGE_NAME)
+        self.ignore('f4')
 
     def setChatPrefix(self, chatPrefix):
         self.chatPrefix = chatPrefix
+
+    def __executeRscHotkey(self):
+        self.checkMagicWord(self.chatPrefix + 'rsc')
 
     def __handleClickedNametag(self, avatar):
         if avatar:
