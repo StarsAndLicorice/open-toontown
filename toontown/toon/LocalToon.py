@@ -387,12 +387,6 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         self.accept('time-delete-up', self.__endTossPie)
         self.accept('pieHit', self.__pieHit)
         self.accept('interrupt-pie', self.interruptPie)
-        self.accept('InputState-jump', self.__toonMoved)
-        self.accept('InputState-forward', self.__toonMoved)
-        self.accept('InputState-reverse', self.__toonMoved)
-        self.accept('InputState-turnLeft', self.__toonMoved)
-        self.accept('InputState-turnRight', self.__toonMoved)
-        self.accept('InputState-slide', self.__toonMoved)
         QuestParser.init()
         return
 
@@ -671,6 +665,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         self.__pieSequence = self.__pieSequence + 1 & 255
         sequence = self.__pieSequence
         self.__presentingPie = 1
+        self.presentingPie = True
         pos = self.getPos()
         hpr = self.getHpr()
         timestamp32 = globalClockDelta.getFrameNetworkTime(bits=32)
@@ -719,6 +714,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         return Task.cont
 
     def interruptPie(self):
+        wasPresentingPie = self.presentingPie
         self.cleanupPieInHand()
         self.__stopPresentPie()
         if self.__piePowerMeter:
@@ -727,14 +723,12 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         if pie and pie.getT() < 14.0 / 24.0:
             del self.pieTracks[self.__pieSequence]
             pie.pause()
+        if wasPresentingPie:
+            self.restoreAnimationAfterPie()
 
     def __pieInHand(self):
         pie = self.pieTracks.get(self.__pieSequence)
         return pie and pie.getT() < 15.0 / 24.0
-
-    def __toonMoved(self, isSet):
-        if isSet:
-            self.interruptPie()
 
     def localTossPie(self, power):
         if not self.__presentingPie:
@@ -779,6 +773,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         pieBubble.reparentTo(flyPie)
         flyPie.setTag('pieSequence', str(sequence))
         toss = Sequence(toss)
+        self.presentingPie = True
         self.tossTrack = toss
         toss.start()
         pie = Sequence(pie, Func(base.cTrav.removeCollider, pieBubble), Func(self.pieFinishedFlying, sequence))

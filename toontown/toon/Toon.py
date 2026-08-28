@@ -492,6 +492,7 @@ class Toon(Avatar.Avatar, ToonHead):
         self.pieModel = None
         self.__pieModelType = None
         self.pieScale = 1.0
+        self.presentingPie = False
         self.hatNodes = []
         self.glassesNodes = []
         self.backpackNodes = []
@@ -1373,7 +1374,7 @@ class Toon(Avatar.Avatar, ToonHead):
             anim, rate = self.standWalkRunReverse[action]
             self.motion.enter()
             self.motion.setState(anim, rate)
-            if anim != self.playingAnim:
+            if not self.presentingPie and anim != self.playingAnim:
                 self.playingAnim = anim
                 self.playingRate = rate
                 self.stop()
@@ -1389,7 +1390,7 @@ class Toon(Avatar.Avatar, ToonHead):
                     self.suit.stop()
                     self.suit.loop(anim)
                     self.suit.setPlayRate(rate, anim)
-            elif rate != self.playingRate:
+            elif not self.presentingPie and rate != self.playingRate:
                 self.playingRate = rate
                 if not self.isDisguised:
                     self.setPlayRate(rate, anim)
@@ -2891,9 +2892,17 @@ class Toon(Avatar.Avatar, ToonHead):
         def getVelocity(toon = self, relVel = relVel):
             return render.getRelativeVector(toon, relVel)
 
-        toss = Track((0, Sequence(Func(self.setPosHpr, x, y, z, h, p, r), Func(pie.reparentTo, self.rightHand), Func(pie.setPosHpr, 0, 0, 0, 0, 0, 0), Parallel(ActorInterval(self, 'throw', startFrame=48), animPie), Func(self.loop, 'neutral'))), (16.0 / 24.0, Func(pie.detachNode)))
+        toss = Track((0, Sequence(Func(self.setPosHpr, x, y, z, h, p, r), Func(pie.reparentTo, self.rightHand), Func(pie.setPosHpr, 0, 0, 0, 0, 0, 0), Parallel(ActorInterval(self, 'throw', startFrame=48), animPie), Func(self.restoreAnimationAfterPie))), (16.0 / 24.0, Func(pie.detachNode)))
         fly = Track((14.0 / 24.0, SoundInterval(sound, node=self)), (16.0 / 24.0, Sequence(Func(flyPie.reparentTo, render), Func(flyPie.setScale, self.pieScale), Func(flyPie.setPosHpr, self, 0.52, 0.97, 2.24, 89.42, -10.56, 87.94), beginFlyIval, ProjectileInterval(flyPie, startVel=getVelocity, duration=3), Func(flyPie.detachNode))))
         return (toss, fly, flyPie)
+
+    def restoreAnimationAfterPie(self):
+        if not self.presentingPie:
+            return
+        self.presentingPie = False
+        self.playingAnim = None
+        self.playingRate = None
+        self.setSpeed(self.forwardSpeed, self.rotateSpeed)
 
     def getPieSplatInterval(self, x, y, z, pieCode):
         from toontown.toonbase import ToontownBattleGlobals

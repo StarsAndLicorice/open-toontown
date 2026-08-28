@@ -843,12 +843,17 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
         if base.config.GetBool('check-invalid-anims', True):
             if animMultiplier > 1.0 and animName in ['neutral']:
                 animMultiplier = 1.0
-        if self.animFSM.getStateNamed(animName):
+        movementAnimStates = ('neutral', 'walk', 'run', 'Happy', 'jumpSquat',
+         'jump', 'jumpAirborne', 'jumpLand')
+        preservePieAnimation = self.presentingPie and animName in movementAnimStates
+        if not preservePieAnimation and self.animFSM.getStateNamed(animName):
             self.animFSM.request(animName, [animMultiplier,
              ts,
              callback,
              extraArgs])
-        self.cleanupPieInHand()
+        if not preservePieAnimation:
+            self.presentingPie = False
+            self.cleanupPieInHand()
         return
 
     def b_setEmoteState(self, animIndex, animMultiplier):
@@ -1398,6 +1403,7 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
             lastTossTrack.finish()
             startTime = 0
         ival = Sequence(ival)
+        self.presentingPie = True
         ival.start(startTime)
         self.tossTrack = ival
         return
@@ -1431,6 +1437,7 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
             lastTossTrack.finish()
             lastPieTrack.finish()
             startTime = 0
+        self.presentingPie = True
         self.tossTrack = toss
         toss.start(startTime)
         pie = Sequence(pie, Func(self.pieFinishedFlying, sequence))
