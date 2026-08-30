@@ -1080,6 +1080,47 @@ def _setClientGameplayConfig(command, toon, setting, value):
         toon.doId, 'applyGameplayConfig', [setting, repr(value)])
 
 
+def _setLawbotBossConfig(command, setting, value):
+    from otp.avatar.DistributedPlayerAI import DistributedPlayerAI
+    from toontown.suit.DistributedLawbotBossAI import DistributedLawbotBossAI
+    from toontown.toonbase import ToontownGlobals
+
+    setattr(ToontownGlobals, setting, value)
+
+    # Lawbot boss maximum damage is copied onto each boss when it is created.
+    # Keep a battle already in progress in step with the new shard tuning.
+    if setting == 'LawbotBossMaxDamage':
+        for obj in list(command.air.doId2do.values()):
+            if isinstance(obj, DistributedLawbotBossAI):
+                obj.bossMaxDamage = value
+
+    # Several of these values drive client-side animation or collision results,
+    # so update every connected player as well as the AI's copy of the globals.
+    for obj in list(command.air.doId2do.values()):
+        if isinstance(obj, DistributedPlayerAI) and obj.isPlayerControlled():
+            command.air.magicWordManager.sendUpdateToAvatarId(
+                obj.doId, 'applyGameplayConfig', [setting, repr(value)])
+
+
+class _LawbotBossConfigMixin:
+    globalName = None
+    displayName = None
+    minimum = 0
+    maximum = None
+
+    def handleWord(self, invoker, avId, toon, *args):
+        value = args[0]
+        if isinstance(value, float) and not math.isfinite(value):
+            return '%s must be a finite number.' % self.displayName
+        if value < self.minimum or (self.maximum is not None and value > self.maximum):
+            if self.maximum is None:
+                return '%s must be at least %g.' % (self.displayName, self.minimum)
+            return '%s must be between %g and %g.' % (
+                self.displayName, self.minimum, self.maximum)
+        _setLawbotBossConfig(self, self.globalName, value)
+        return 'Set %s to %g for this shard.' % (self.displayName.lower(), value)
+
+
 class SetPieThrowingInterval(MagicWord):
     aliases = ['pieinterval', 'piethrowinterval', 'piethrowdelay']
     desc = "Sets the delay before the caller can begin throwing another pie."
@@ -1096,20 +1137,130 @@ class SetPieThrowingInterval(MagicWord):
 
 
 class SetLawyerAttackChance(MagicWord):
-    aliases = ['lawyerattackchance', 'lawyerchance']
+    aliases = ['lawyerattackchance', 'lawyerchance', 'lawbotbosslawyerchancetoattack']
     desc = "Sets the shard-wide chance that a CJ lawyer attacks instead of prosecuting."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     affectRange = [MagicWordConfig.AFFECT_SELF]
     arguments = [('percent', int, True)]
 
     def handleWord(self, invoker, avId, toon, *args):
-        from toontown.toonbase import ToontownGlobals
-
         percent = args[0]
         if not 0 <= percent <= 100:
             return 'The lawyer attack chance must be between 0 and 100 percent.'
-        ToontownGlobals.LawbotBossLawyerChanceToAttack = percent
+        _setLawbotBossConfig(self, 'LawbotBossLawyerChanceToAttack', percent)
         return 'Set the lawyer attack chance to %d%% for this shard.' % percent
+
+
+class SetLawbotBossAreaAttackChance(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['cjareaattackchance', 'cjjumpchance', 'areaattackchance',
+               'lawbotbosschancetodoareaattack']
+    desc = "Sets the shard-wide chance that the CJ performs his jump attack."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('percent', int, True)]
+    globalName = 'LawbotBossChanceToDoAreaAttack'
+    displayName = 'CJ jump attack chance'
+    maximum = 100
+
+
+class SetLawbotBossBonusDuration(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['cjbonusduration', 'bonusduration', 'lawbotbossbonusduration']
+    desc = "Sets the shard-wide duration of the CJ's bonus weight period."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('seconds', float, True)]
+    globalName = 'LawbotBossBonusDuration'
+    displayName = 'CJ bonus duration'
+
+
+class SetLawbotBossBonusWeightMultiplier(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['cjbonusweightmultiplier', 'bonusweightmultiplier', 'bonusmultiplier',
+               'lawbotbossbonusweightmultiplier']
+    desc = "Sets the shard-wide CJ bonus weight multiplier."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('multiplier', int, True)]
+    globalName = 'LawbotBossBonusWeightMultiplier'
+    displayName = 'CJ bonus weight multiplier'
+
+
+class SetLawbotBossLawyerStunTime(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['lawyerstuntime', 'cjlawyerstuntime', 'lawbotbosslawyerstuntime']
+    desc = "Sets the shard-wide duration for which CJ lawyers remain stunned."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('seconds', float, True)]
+    globalName = 'LawbotBossLawyerStunTime'
+    displayName = 'CJ lawyer stun time'
+
+
+class SetLawbotBossLawyerToPanTime(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['lawyertopantime', 'cjlawyertopantime', 'lawbotbosslawyertopantime']
+    desc = "Sets the shard-wide duration of a CJ lawyer's throw toward the pan."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('seconds', float, True)]
+    globalName = 'LawbotBossLawyerToPanTime'
+    displayName = 'CJ lawyer-to-pan time'
+
+
+class SetLawbotBossLawyerCycleTime(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['lawyercycletime', 'cjlawyercycletime', 'lawbotbosslawyercycletime']
+    desc = "Sets the shard-wide delay between CJ lawyer attack cycles."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('seconds', float, True)]
+    globalName = 'LawbotBossLawyerCycleTime'
+    displayName = 'CJ lawyer cycle time'
+
+
+class SetLawbotBossDefensePanDamage(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['defensepandamage', 'cjdefensepandamage', 'lawbotbossdefensepandamage']
+    desc = "Sets the shard-wide damage generated by hitting the CJ's defense pan."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('damage', int, True)]
+    globalName = 'LawbotBossDefensePanDamage'
+    displayName = 'CJ defense pan damage'
+    maximum = 65535
+
+
+class SetLawbotBossInitialDamage(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['cjinitialdamage', 'initialdamage', 'lawbotbossinitialdamage']
+    desc = "Sets the shard-wide initial scale-round damage for the CJ."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('damage', int, True)]
+    globalName = 'LawbotBossInitialDamage'
+    displayName = 'CJ initial damage'
+    maximum = 65534
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        if args[0] >= ToontownGlobals.LawbotBossMaxDamage:
+            return 'CJ initial damage must be less than CJ maximum damage (%d).' % (
+                ToontownGlobals.LawbotBossMaxDamage)
+        return super().handleWord(invoker, avId, toon, *args)
+
+
+class SetLawbotBossMaxDamage(_LawbotBossConfigMixin, MagicWord):
+    aliases = ['cjmaxdamage', 'maxcjdamage', 'lawbotbossmaxdamage']
+    desc = "Sets the shard-wide damage needed to defeat the CJ."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    arguments = [('damage', int, True)]
+    globalName = 'LawbotBossMaxDamage'
+    displayName = 'CJ maximum damage'
+    maximum = 65535
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        if args[0] <= ToontownGlobals.LawbotBossInitialDamage:
+            return 'CJ maximum damage must exceed CJ initial damage (%d).' % (
+                ToontownGlobals.LawbotBossInitialDamage)
+        return super().handleWord(invoker, avId, toon, *args)
 
 
 class SetToonForwardSpeed(MagicWord):
@@ -1159,7 +1310,7 @@ class SetToonRotateSpeed(MagicWord):
 
 class GameplayConfig(MagicWord):
     aliases = ['configvalues', 'gameplayvalues', 'tuning']
-    desc = "Reports the current pie, lawyer, and Toon movement configuration."
+    desc = "Displays the current pie, CJ, and Toon movement configuration."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     affectRange = [MagicWordConfig.AFFECT_SELF]
 
@@ -1167,13 +1318,26 @@ class GameplayConfig(MagicWord):
         from toontown.toonbase import ToontownGlobals
 
         values = _getGameplayConfig(toon)
-        return (
-            'Pie interval: %g s; lawyer attack chance: %d%%; '
-            'forward speed: %g; rotation speed: %g deg/s; backward speed: %g.'
-            % (values['pieThrowingInterval'],
-               ToontownGlobals.LawbotBossLawyerChanceToAttack,
-               values['toonForwardSpeed'], values['toonRotateSpeed'],
-               values['toonReverseSpeed']))
+        text = '\n'.join((
+            'Gameplay tuning',
+            'Pie interval: %g s' % values['pieThrowingInterval'],
+            'Forward speed: %g' % values['toonForwardSpeed'],
+            'Rotation speed: %g deg/s' % values['toonRotateSpeed'],
+            'Backward speed: %g' % values['toonReverseSpeed'],
+            'Lawyer attack chance: %d%%' % ToontownGlobals.LawbotBossLawyerChanceToAttack,
+            'CJ jump attack chance: %d%%' % ToontownGlobals.LawbotBossChanceToDoAreaAttack,
+            'CJ bonus duration: %g s' % ToontownGlobals.LawbotBossBonusDuration,
+            'CJ bonus weight multiplier: %g' % ToontownGlobals.LawbotBossBonusWeightMultiplier,
+            'CJ lawyer stun time: %g s' % ToontownGlobals.LawbotBossLawyerStunTime,
+            'CJ lawyer-to-pan time: %g s' % ToontownGlobals.LawbotBossLawyerToPanTime,
+            'CJ lawyer cycle time: %g s' % ToontownGlobals.LawbotBossLawyerCycleTime,
+            'CJ defense pan damage: %d' % ToontownGlobals.LawbotBossDefensePanDamage,
+            'CJ initial damage: %d' % ToontownGlobals.LawbotBossInitialDamage,
+            'CJ maximum damage: %d' % ToontownGlobals.LawbotBossMaxDamage,
+        ))
+        self.air.magicWordManager.sendUpdateToAvatarId(
+            toon.doId, 'applyGameplayConfig', ['showTuning', text])
+        return 'Displayed the current gameplay tuning.'
 
 
 class ToggleInstantKill(MagicWord):

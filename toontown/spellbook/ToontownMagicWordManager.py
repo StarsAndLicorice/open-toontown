@@ -45,6 +45,8 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
         # Keep track of the last clicked avatar for targeting purposes
         self.lastClickedAvId = 0
 
+        self.gameplayConfigDisplay = None
+
     def announceGenerate(self):
         DistributedObject.DistributedObject.announceGenerate(self)
 
@@ -60,6 +62,7 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
         self.accept('f4', self.__executeRscHotkey)
 
     def disable(self):
+        self.__hideGameplayConfig()
         DistributedObject.DistributedObject.disable(self)
 
         # Ignore the events we were accepting earlier
@@ -269,14 +272,38 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
         from otp.otpbase import OTPGlobals
         from toontown.toonbase import ToontownGlobals
 
+        if setting == 'showTuning':
+            self.__showGameplayConfig(value)
+            return
+
         try:
-            value = float(value)
-        except ValueError:
+            value = json.loads(value)
+        except (TypeError, ValueError):
             self.notify.warning('Ignoring invalid gameplay config value %r for %s' % (value, setting))
+            return
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            self.notify.warning('Ignoring non-numeric gameplay config value %r for %s' % (value, setting))
             return
 
         if setting == 'pieThrowingInterval':
             ToontownGlobals.PieThrowingInterval = value
+            return
+
+        if setting.startswith('LawbotBoss'):
+            if not hasattr(ToontownGlobals, setting):
+                self.notify.warning('Ignoring unknown Lawbot boss config setting %r' % setting)
+                return
+            setattr(ToontownGlobals, setting, value)
+
+            from toontown.suit import DistributedLawbotBoss
+            boss = DistributedLawbotBoss.OneBossCog
+            if boss:
+                if setting == 'LawbotBossMaxDamage':
+                    boss.bossMaxDamage = value
+                elif setting == 'LawbotBossDefensePanDamage':
+                    boss.panDamage = value
+                if setting in ('LawbotBossInitialDamage', 'LawbotBossMaxDamage') and boss.state == 'BattleThree':
+                    boss.makeScaleReflectDamage()
             return
 
         settingInfo = {
@@ -309,6 +336,35 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
             controls.setWalkSpeed(
                 values['avatarControlForwardSpeed'], jump,
                 values['avatarControlReverseSpeed'], values['avatarControlRotateSpeed'])
+
+    def __showGameplayConfig(self, text):
+        from direct.gui.OnscreenText import OnscreenText
+        from panda3d.core import TextNode
+
+        self.__hideGameplayConfig()
+        self.gameplayConfigDisplay = OnscreenText(
+            parent=aspect2dp,
+            text=text,
+            pos=(-0.68, 0.78),
+            scale=0.045,
+            align=TextNode.ALeft,
+            font=loader.loadFont('phase_3/models/fonts/ImpressBT.ttf'),
+            fg=(1.0, 1.0, 1.0, 1.0),
+            bg=(0.0, 0.0, 0.0, 0.72),
+            mayChange=False,
+            drawOrder=1000,
+        )
+        self.gameplayConfigDisplay.textNode.setCardAsMargin(0.45, 0.45, 0.35, 0.35)
+        self.gameplayConfigDisplay.setBin('fixed', 100000)
+        self.gameplayConfigDisplay.setDepthTest(False)
+        self.gameplayConfigDisplay.setDepthWrite(False)
+        taskMgr.doMethodLater(8.0, self.__hideGameplayConfig, self.uniqueName('hideGameplayConfig'))
+
+    def __hideGameplayConfig(self, task=None):
+        taskMgr.remove(self.uniqueName('hideGameplayConfig'))
+        if self.gameplayConfigDisplay:
+            self.gameplayConfigDisplay.destroy()
+            self.gameplayConfigDisplay = None
     
     def teleportResponse(self, loaderId, whereId, how, hoodId, zoneId, avId):
         # The AI tells the avatar to go somewhere.  This is probably in
