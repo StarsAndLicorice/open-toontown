@@ -351,7 +351,10 @@ class ToontownMagicWordManager(DistributedObject.DistributedObject):
             font=loader.loadFont('phase_3/models/fonts/ImpressBT.ttf'),
             fg=(1.0, 1.0, 1.0, 1.0),
             bg=(0.0, 0.0, 0.0, 0.72),
-            mayChange=False,
+            # Keep the TextNode available until after we adjust its card
+            # margins below.  With mayChange=False, OnscreenText replaces it
+            # immediately with generated GeomNode geometry.
+            mayChange=True,
             drawOrder=1000,
         )
         self.gameplayConfigDisplay.textNode.setCardAsMargin(0.45, 0.45, 0.35, 0.35)
