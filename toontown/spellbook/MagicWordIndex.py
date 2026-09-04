@@ -873,6 +873,7 @@ class Rsc(MagicWord):
         requestedJurors = args[0]
         scaleStates = ("BattleThree", "NearVictory")
         if requestedJurors == -1 and boss.getCurrentOrNextState() in scaleStates:
+            boss.b_setStunMode(False)
             boss.fixScaleRoundScenery()
             boss.restartScaleRound()
             return "Restarted the CJ scale round with %d seated Toon juror%s." % (
@@ -885,12 +886,37 @@ class Rsc(MagicWord):
         if requestedJurors < 0 or requestedJurors > 12:
             return "The seated Toon count must be between 0 and 12."
 
+        boss.b_setStunMode(False)
         boss.acceptNewToons()
         boss.rushToScaleRound(invoker.doId, requestedJurors)
         return (
             "Advanced the CJ to the scale round with %d Toon juror%s seated by %s."
             % (requestedJurors, "" if requestedJurors == 1 else "s", invoker.getName())
         )
+
+
+class StunMode(MagicWord):
+    desc = "Enter a safe CJ lawyer-stunning practice round."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.suit.DistributedBossCogAI import AllBossCogs
+
+        boss = None
+        for bossCog in AllBossCogs:
+            if bossCog.isToonKnown(invoker.doId):
+                boss = bossCog
+                break
+
+        if boss is None:
+            return "You aren't in a boss battle."
+        if boss.dept != "l":
+            return "The stunMode magic word can only be used in a CJ battle."
+
+        boss.acceptNewToons()
+        boss.rushToScaleRound(invoker.doId, 0, stunMode=True)
+        return "Entered CJ lawyer stun practice mode."
 
 
 class GlobalTeleport(MagicWord):

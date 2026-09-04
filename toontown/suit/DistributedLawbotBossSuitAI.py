@@ -140,7 +140,8 @@ class DistributedLawbotBossSuitAI(DistributedSuitBaseAI.DistributedSuitBaseAI):
             self.sendUpdate('doStun', [])
             self.setStun(True)
             taskName = self.uniqueName('unstun')
-            taskMgr.doMethodLater(ToontownGlobals.LawbotBossLawyerStunTime, self.unStun, taskName)
+            stunTime = min(ToontownGlobals.LawbotBossLawyerStunTime, 5.0)
+            taskMgr.doMethodLater(stunTime, self.unStun, taskName)
             if self.boss:
                 self.boss.checkForBonusState()
 

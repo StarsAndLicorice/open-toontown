@@ -2637,6 +2637,7 @@ dclass DistributedLawbotBoss : DistributedBossCog {
   setBattleDifficulty(uint8) broadcast ram;
   prepareScaleRound(uint32, int8, uint8) broadcast;
   resetScaleRound(uint16) broadcast;
+  setStunMode(bool) broadcast ram;
   showScaleRoundTime(uint32/1000) broadcast;
 };
 

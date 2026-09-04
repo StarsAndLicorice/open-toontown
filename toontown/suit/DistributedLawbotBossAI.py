@@ -57,6 +57,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.weightPerToon = {}
         self.cannonIndexPerToon = {}
         self.battleDifficulty = 0
+        self.stunMode = False
         return
 
     def delete(self):
@@ -79,6 +80,8 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.hitBoss(damage)
 
     def hitBoss(self, bossDamage):
+        if self.stunMode:
+            return
         avId = self.air.getAvatarIdFromSender()
         if not self.validate(avId, avId in self.involvedToons, 'DistributedLawbotbossAI.hitBoss from unknown avatar'):
             return
@@ -106,6 +109,8 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
             self.__recordHit()
 
     def healBoss(self, bossHeal):
+        if self.stunMode:
+            return
         bossDamage = -bossHeal
         avId = self.air.getAvatarIdFromSender()
         currState = self.getCurrentOrNextState()
@@ -120,6 +125,8 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
             self.__recordHit()
 
     def hitBossInsides(self):
+        if self.stunMode:
+            return
         avId = self.air.getAvatarIdFromSender()
         if not self.validate(avId, avId in self.involvedToons, 'hitBossInsides from unknown avatar'):
             return
@@ -139,6 +146,11 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         if toon:
             self.healToon(toon, self.toonupValue)
             self.sendUpdate('toonGotHealed', [toonId])
+
+    def damageToon(self, toon, deduction):
+        if self.stunMode:
+            return
+        DistributedBossCogAI.DistributedBossCogAI.damageToon(self, toon, deduction)
 
     def touchCage(self):
         avId = self.air.getAvatarIdFromSender()
@@ -171,6 +183,8 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.sendUpdate('setTaunt', [tauntIndex, extraInfo])
 
     def doNextAttack(self, task):
+        if self.stunMode:
+            return
         for lawyer in self.lawyers:
             lawyer.doNextAttack(self)
             
@@ -489,7 +503,10 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.toonupValue = diffSettings[3]
         self.notify.debug('diffLevel=%d ammoCount=%d gavels=%d lawyers = %d, toonup=%d' % (self.battleDifficulty, self.ammoCount, self.numGavels, self.numLawyers, self.toonupValue))
         self.air.writeServerEvent('lawbotBossSettings', self.doId, '%s|%s|%s|%s|%s|%s' % (self.dept, self.battleDifficulty, self.ammoCount, self.numGavels, self.numLawyers, self.toonupValue))
-        self.__makeBattleThreeObjects()
+        if not self.stunMode:
+            self.__makeBattleThreeObjects()
+        else:
+            self.numGavels = 0
         self.__makeLawyers()
         self.numPies = self.ammoCount
         self.resetBattles()
@@ -506,10 +523,12 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
             if toon:
                 toon.__touchedCage = 0
 
-        for aGavel in self.gavels:
-            aGavel.turnOn()
+        if self.gavels:
+            for aGavel in self.gavels:
+                aGavel.turnOn()
 
-        self.waitForNextAttack(5)
+        if not self.stunMode:
+            self.waitForNextAttack(5)
         self.notify.debug('battleDifficulty = %d' % self.battleDifficulty)
         self.numToonsAtStart = len(self.involvedToons)
 
@@ -800,7 +819,10 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
             if toon:
                 self.healToon(toon, ToontownGlobals.LawbotBossBonusToonup)
 
-        taskMgr.doMethodLater(ToontownGlobals.LawbotBossBonusDuration, self.clearBonus, self.uniqueName('clearBonus'))
+        bonusDuration = ToontownGlobals.LawbotBossBonusDuration
+        if self.stunMode:
+            bonusDuration = 5.0
+        taskMgr.doMethodLater(bonusDuration, self.clearBonus, self.uniqueName('clearBonus'))
         self.sendUpdate('enteredBonusState', [])
 
     def areAllLawyersStunned(self):
@@ -817,7 +839,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
             return
         curTime = globalClock.getFrameTime()
         delta = curTime - self.bonusTimeStarted
-        if ToontownGlobals.LawbotBossBonusWaitTime < delta:
+        if self.stunMode or ToontownGlobals.LawbotBossBonusWaitTime < delta:
             self.startBonusState()
 
     def toonEnteredCannon(self, toonId, cannonIndex):
@@ -849,7 +871,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
 
         return
 
-    def rushToScaleRound(self, toonId, numJurorsSeated):
+    def rushToScaleRound(self, toonId, numJurorsSeated, stunMode=False):
         """Put the CJ battle into the state produced by the cannon round.
 
         In addition to changing the boss state, this sets up the jurors so the
@@ -857,6 +879,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         The client update fixes up scenery normally moved by the two preceding
         rounds before BattleThree is entered.
         """
+        self.b_setStunMode(stunMode)
         self.__makeChairs()
 
         cannonIndex = self.cannonIndexPerToon.get(toonId)
@@ -882,6 +905,22 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.sendUpdate('prepareScaleRound', [toonId, cannonIndex, numJurorsSeated])
 
         self.restartScaleRound()
+
+    def b_setStunMode(self, stunMode):
+        self.setStunMode(stunMode)
+        self.d_setStunMode(stunMode)
+
+    def setStunMode(self, stunMode):
+        self.stunMode = bool(stunMode)
+        if self.stunMode:
+            self.b_setAttackCode(ToontownGlobals.BossCogNoAttack)
+            self.stopAttacks()
+            self.stopStrafes()
+            taskMgr.remove(self.uniqueName('clearBonus'))
+            self.bonusState = False
+
+    def d_setStunMode(self, stunMode):
+        self.sendUpdate('setStunMode', [stunMode])
 
     def fixScaleRoundScenery(self):
         """Correct skipped cannon-round scenery without changing jury credit."""

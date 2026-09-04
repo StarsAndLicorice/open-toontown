@@ -85,6 +85,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.numJurorsLocalToonSeated = 0
         self.cannonIndex = -1
         self.scaleRoundHeldInputs = {}
+        self.stunMode = False
         return
 
     def announceGenerate(self):
@@ -575,6 +576,25 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         # regular tracking task reapplies the correct animation and sound.
         localAvatar.playingAnim = None
         localAvatar.lastAction = None
+        self.__applyStunModePresentation()
+
+    def setStunMode(self, stunMode):
+        self.stunMode = bool(stunMode)
+        self.__applyStunModePresentation()
+
+    def __applyStunModePresentation(self):
+        if not hasattr(self, 'scaleNodePath'):
+            return
+        if self.stunMode:
+            self.scaleNodePath.stash()
+            self.localToonIsSafe = 1
+            self.cleanupAttacks()
+            self.setDizzy(0)
+            self.stopAnimate()
+        else:
+            self.localToonIsSafe = 0
+            if getattr(self, 'state', None) == 'BattleThree':
+                self.scaleNodePath.unstash()
 
     def loadCannons(self):
         pass
@@ -1040,7 +1060,10 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
 
     def enterBattleThree(self):
         DistributedBossCog.DistributedBossCog.enterBattleThree(self)
-        self.scaleNodePath.unstash()
+        if self.stunMode:
+            self.scaleNodePath.stash()
+        else:
+            self.scaleNodePath.unstash()
         self.countToonJurors()
         _, self.bonusWeight, self.numJurorsLocalToonSeated = self.calculateWeightOfToon(base.localAvatar.doId)
         localAvatar.setPos(-3, 0, 0)
@@ -1054,6 +1077,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.raised = 1
         self.forward = 1
         self.doAnimate()
+        if self.stunMode:
+            self.stopAnimate()
         self.accept('enterWitnessStand', self.__touchedWitnessStand)
         self.accept('pieSplat', self.__pieSplat)
         self.accept('localPieSplat', self.__localPieSplat)
@@ -1328,6 +1353,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             taskMgr.doMethodLater(30, self.__howToThrowPies, self.uniqueName('PieAdvice'))
 
     def __pieSplat(self, toon, pieCode):
+        if self.stunMode:
+            return
         if pieCode == ToontownGlobals.PieCodeBossInsides:
             if toon == localAvatar:
                 self.d_hitBossInsides()
@@ -1907,14 +1934,17 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
 
     def enteredBonusState(self):
         self.witnessToon.clearChat()
-        text = TTLocalizer.WitnessToonBonus % (ToontownGlobals.LawbotBossBonusWeightMultiplier, ToontownGlobals.LawbotBossBonusDuration)
+        bonusDuration = ToontownGlobals.LawbotBossBonusDuration
+        if self.stunMode:
+            bonusDuration = 5.0
+        text = TTLocalizer.WitnessToonBonus % (ToontownGlobals.LawbotBossBonusWeightMultiplier, bonusDuration)
         self.witnessToon.setChatAbsolute(text, CFSpeech | CFTimeout)
         base.playSfx(self.toonUpSfx)
         if not self.bonusTimer:
             self.bonusTimer = ToontownTimer.ToontownTimer()
             self.bonusTimer.posInTopRightCorner()
         self.bonusTimer.show()
-        self.bonusTimer.countdown(ToontownGlobals.LawbotBossBonusDuration, self.hideBonusTimer)
+        self.bonusTimer.countdown(bonusDuration, self.hideBonusTimer)
 
     def setAttackCode(self, attackCode, avId = 0):
         DistributedBossCog.DistributedBossCog.setAttackCode(self, attackCode, avId)
