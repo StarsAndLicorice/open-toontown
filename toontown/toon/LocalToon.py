@@ -754,6 +754,8 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         return
 
     def __startLocalPieToss(self, power, timestamp32=None, startTime=0.0, auto=False):
+        now = globalClock.getFrameTime()
+        releaseTime = now - max(startTime, 0.0)
         pos = self.getPos()
         hpr = self.getHpr()
         if timestamp32 is None:
@@ -807,6 +809,8 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         pie = Sequence(pie, Func(base.cTrav.removeCollider, pieBubble), Func(self.pieFinishedFlying, sequence))
         self.pieTracks[sequence] = pie
         pie.start(startTime)
+        if self.__autoPieThrowing and not auto:
+            self.__nextAutoPieTime = releaseTime + max(ToontownGlobals.PieThrowingInterval, 0.0)
         return
 
     def __toggleAutoPieThrowing(self):
@@ -820,12 +824,18 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
         if self.numPies == 0:
             messenger.send('outOfPies')
             return
-        # Do not cancel an automatic toss that is already winding up, or a
-        # queued full-power pie that currently has control of the throw.
-        if not self.__fullPowerPieQueued and self.__pieSequence not in self.__autoPiePending:
-            self.interruptPie()
+        # Enabling the auto-thrower only queues future throws.  Let the update
+        # task apply the same charging, airborne, and pie-interval checks as it
+        # does between automatic throws instead of interrupting the current
+        # one here.
         self.__autoPieThrowing = True
-        self.__nextAutoPieTime = globalClock.getFrameTime()
+        now = globalClock.getFrameTime()
+        interval = max(ToontownGlobals.PieThrowingInterval, 0.0)
+        pie = self.pieTracks.get(self.__pieSequence)
+        if pie:
+            self.__nextAutoPieTime = now + max(interval - pie.getT(), 0.0)
+        else:
+            self.__nextAutoPieTime = now
         taskMgr.add(self.__updateAutoPieThrowing, self.uniqueName('autoPieThrowing'))
         self.setSystemMessage(0, 'Automatic pie throwing enabled.', WhisperPopup.WTSystem)
 
