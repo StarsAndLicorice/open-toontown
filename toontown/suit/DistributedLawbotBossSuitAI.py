@@ -14,6 +14,7 @@ class DistributedLawbotBossSuitAI(DistributedSuitBaseAI.DistributedSuitBaseAI):
     def __init__(self, air, suitPlanner):
         DistributedSuitBaseAI.DistributedSuitBaseAI.__init__(self, air, suitPlanner)
         self.stunned = False
+        self.stunLevel = 0
         self.timeToRelease = 3.15
         self.timeProsecuteStarted = 0
         self.fsm = ClassicFSM.ClassicFSM('DistributedLawbotBossSuitAI', [
@@ -129,7 +130,13 @@ class DistributedLawbotBossSuitAI(DistributedSuitBaseAI.DistributedSuitBaseAI):
 
     def hitByToon(self):
         self.notify.debug('I got hit by a toon')
-        if not self.stunned:
+        stunMode = self.boss and self.boss.stunMode
+        previousMinimum = None
+        if stunMode:
+            previousMinimum = self.boss.getMinimumLawyerStunLevel()
+            if self.stunLevel != previousMinimum:
+                return
+        if not self.stunned or stunMode:
             curTime = globalClockDelta.getRealNetworkTime()
             deltaTime = curTime - self.timeProsecuteStarted
             deltaTime /= 100.0
@@ -138,17 +145,21 @@ class DistributedLawbotBossSuitAI(DistributedSuitBaseAI.DistributedSuitBaseAI):
                 taskName = self.uniqueName('ProsecutionHealsBoss')
                 taskMgr.remove(taskName)
             self.sendUpdate('doStun', [])
+            if stunMode:
+                self.stunLevel += 1
             self.setStun(True)
             taskName = self.uniqueName('unstun')
+            taskMgr.remove(taskName)
             stunTime = min(ToontownGlobals.LawbotBossLawyerStunTime, 5.0)
             taskMgr.doMethodLater(stunTime, self.unStun, taskName)
             if self.boss:
-                self.boss.checkForBonusState()
+                self.boss.checkForBonusState(previousMinimum)
 
     def setStun(self, val):
         self.stunned = val
 
     def unStun(self, taskName):
+        self.stunLevel = 0
         self.setStun(False)
 
     def enterPreThrowProsecute(self):

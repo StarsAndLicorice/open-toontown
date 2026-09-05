@@ -15,6 +15,7 @@ class DistributedLawbotBossSuit(DistributedSuitBase.DistributedSuitBase):
 
     def __init__(self, cr):
         self.flyingEvidenceTrack = None
+        self.stunSequence = None
         try:
             self.DistributedSuit_initialized
         except:
@@ -294,7 +295,11 @@ class DistributedLawbotBossSuit(DistributedSuitBase.DistributedSuitBase):
 
     def doStun(self):
         self.notify.debug('doStun')
-        self.fsm.request('Stunned')
+        if (self.fsm.getCurrentState().getName() == 'Stunned' and
+                self.stunSequence):
+            self.stunSequence.start()
+        else:
+            self.fsm.request('Stunned')
 
     def enterPreThrowProsecute(self):
         duration = ToontownGlobals.LawbotBossLawyerToPanTime
@@ -373,6 +378,9 @@ class DistributedLawbotBossSuit(DistributedSuitBase.DistributedSuitBase):
             del self.activeIntervals[throwName]
 
     def enterStunned(self):
+        if self.stunSequence:
+            self.stunSequence.pause()
+            self.activeIntervals.pop(self.stunSequence.getName(), None)
         stunTime = ToontownGlobals.LawbotBossLawyerStunTime
         if self.boss and self.boss.stunMode:
             stunTime = min(stunTime, 5.0)
@@ -380,8 +388,13 @@ class DistributedLawbotBossSuit(DistributedSuitBase.DistributedSuitBase):
         seqName = stunSequence.getName()
         stunSequence.append(Func(self.fsm.request, 'neutral'))
         self.activeIntervals[seqName] = stunSequence
+        self.stunSequence = stunSequence
         stunSequence.start()
 
     def exitStunned(self):
+        if self.stunSequence:
+            self.stunSequence.pause()
+            self.activeIntervals.pop(self.stunSequence.getName(), None)
+            self.stunSequence = None
         self.prosecuteEvidence.hide()
         self.attackEvidence.hide()

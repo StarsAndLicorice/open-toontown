@@ -873,6 +873,7 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         bonusDuration = ToontownGlobals.LawbotBossBonusDuration
         if self.stunMode:
             bonusDuration = 5.0
+            taskMgr.remove(self.uniqueName('clearBonus'))
         taskMgr.doMethodLater(bonusDuration, self.clearBonus, self.uniqueName('clearBonus'))
         self.sendUpdate('enteredBonusState', [])
 
@@ -883,8 +884,18 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
 
         return True
 
-    def checkForBonusState(self):
-        if self.bonusState:
+    def getMinimumLawyerStunLevel(self):
+        if not self.lawyers:
+            return 0
+        return min(lawyer.stunLevel for lawyer in self.lawyers)
+
+    def checkForBonusState(self, previousMinimum=None):
+        if self.bonusState and not self.stunMode:
+            return
+        if self.stunMode:
+            if (previousMinimum is not None and
+                    self.getMinimumLawyerStunLevel() > previousMinimum):
+                self.startBonusState()
             return
         if not self.areAllLawyersStunned():
             return
