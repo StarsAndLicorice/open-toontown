@@ -86,6 +86,13 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.cannonIndex = -1
         self.scaleRoundHeldInputs = {}
         self.stunMode = False
+        self.topDownCameraEnabled = False
+        self.topDownCameraHeight = 60.0
+        self.topDownCameraParent = None
+        self.topDownCameraPos = None
+        self.topDownCameraHpr = None
+        self.topDownCameraHadSmartCamera = False
+        self.topDownCameraButton = None
         return
 
     def announceGenerate(self):
@@ -148,6 +155,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
     def disable(self):
         global OneBossCog
         self.notify.debug('----- disable')
+        self.__disableTopDownCamera()
+        self.__destroyTopDownCameraButton()
         DistributedBossCog.DistributedBossCog.disable(self)
         self.request('Off')
         self.unloadEnvironment()
@@ -581,6 +590,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
     def setStunMode(self, stunMode):
         self.stunMode = bool(stunMode)
         self.__applyStunModePresentation()
+        self.__updateTopDownCameraAvailability()
 
     def __applyStunModePresentation(self):
         if not hasattr(self, 'scaleNodePath'):
@@ -595,6 +605,120 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.localToonIsSafe = 0
             if getattr(self, 'state', None) == 'BattleThree':
                 self.scaleNodePath.unstash()
+
+    def __updateTopDownCameraAvailability(self):
+        state = getattr(self, 'state', None)
+        enteringBattleThree = state is None and getattr(self, 'newState', None) == 'BattleThree'
+        if self.stunMode and (state == 'BattleThree' or enteringBattleThree):
+            self.__showTopDownCameraButton()
+        else:
+            self.__disableTopDownCamera()
+            self.__destroyTopDownCameraButton()
+
+    def __showTopDownCameraButton(self):
+        if self.topDownCameraButton:
+            return
+        buttonGui = loader.loadModel('phase_3/models/gui/quit_button')
+        self.topDownCameraButton = DirectButton(
+            parent=base.a2dTopRight,
+            relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'),
+                   buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(1.25, 1, 1),
+            pos=(-0.28, 0, -0.24),
+            text='Top-Down View',
+            text_font=ToontownGlobals.getInterfaceFont(),
+            text_scale=0.045,
+            text_pos=(0, -0.015),
+            text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1),
+            textMayChange=1,
+            sortOrder=DGG.FOREGROUND_SORT_INDEX,
+            command=self.__toggleTopDownCamera)
+        buttonGui.removeNode()
+
+    def __destroyTopDownCameraButton(self):
+        if self.topDownCameraButton:
+            self.topDownCameraButton.destroy()
+            self.topDownCameraButton = None
+
+    def __toggleTopDownCamera(self):
+        if not self.stunMode or getattr(self, 'state', None) != 'BattleThree':
+            return
+        if self.topDownCameraEnabled:
+            self.__disableTopDownCamera()
+        else:
+            self.__enableTopDownCamera()
+
+    def __enableTopDownCamera(self):
+        if self.topDownCameraEnabled:
+            return
+        self.topDownCameraEnabled = True
+        self.topDownCameraParent = camera.getParent()
+        self.topDownCameraPos = camera.getPos()
+        self.topDownCameraHpr = camera.getHpr()
+        self.topDownCameraHadSmartCamera = getattr(localAvatar, '_smartCamEnabled', False)
+        if self.topDownCameraHadSmartCamera:
+            localAvatar.stopUpdateSmartCamera()
+        camera.wrtReparentTo(render)
+        camera.setHpr(render, 0, -90, 0)
+        self.accept('wheel_up', self.__adjustTopDownCameraHeight, [5.0])
+        self.accept('wheel_down', self.__adjustTopDownCameraHeight, [-5.0])
+        taskMgr.add(self.__updateTopDownCamera, self.uniqueName('topDownCamera'), priority=48)
+        if self.topDownCameraButton:
+            self.topDownCameraButton['text'] = 'Normal View'
+
+    def __disableTopDownCamera(self):
+        if not self.topDownCameraEnabled:
+            return
+        self.topDownCameraEnabled = False
+        self.ignore('wheel_up')
+        self.ignore('wheel_down')
+        taskMgr.remove(self.uniqueName('topDownCamera'))
+        if self.topDownCameraParent and not self.topDownCameraParent.isEmpty():
+            camera.reparentTo(self.topDownCameraParent)
+            camera.setPos(self.topDownCameraPos)
+            camera.setHpr(self.topDownCameraHpr)
+        else:
+            camera.wrtReparentTo(render)
+        if self.topDownCameraHadSmartCamera and not getattr(localAvatar, '_smartCamEnabled', False):
+            localAvatar.startUpdateSmartCamera()
+        self.topDownCameraParent = None
+        self.topDownCameraPos = None
+        self.topDownCameraHpr = None
+        self.topDownCameraHadSmartCamera = False
+        if self.topDownCameraButton:
+            self.topDownCameraButton['text'] = 'Top-Down View'
+
+    def __adjustTopDownCameraHeight(self, amount):
+        if self.topDownCameraEnabled:
+            self.topDownCameraHeight = min(max(self.topDownCameraHeight + amount, 10.0), 150.0)
+
+    def __updateTopDownCamera(self, task):
+        if not self.stunMode or getattr(self, 'state', None) != 'BattleThree':
+            self.__disableTopDownCamera()
+            return Task.done
+
+        toonPos = localAvatar.getPos(render)
+        camera.setPos(render, toonPos[0], toonPos[1], toonPos[2] + self.topDownCameraHeight)
+        camera.setHpr(render, 0, -90, 0)
+
+        if base.mouseWatcherNode.hasMouse():
+            mousePos = base.mouseWatcherNode.getMouse()
+            nearPoint = Point3()
+            farPoint = Point3()
+            if base.camLens.extrude(mousePos, nearPoint, farPoint):
+                nearPoint = render.getRelativePoint(base.cam, nearPoint)
+                farPoint = render.getRelativePoint(base.cam, farPoint)
+                cursorPoint = Point3()
+                toonPlane = Plane(Vec3(0, 0, 1), toonPos)
+                if toonPlane.intersectsLine(cursorPoint, nearPoint, farPoint):
+                    offset = cursorPoint - toonPos
+                    if offset[0] * offset[0] + offset[1] * offset[1] > 0.0001:
+                        heading = math.degrees(math.atan2(-offset[0], offset[1]))
+                        localAvatar.setH(render, heading)
+        return Task.cont
 
     def loadCannons(self):
         pass
@@ -1097,6 +1221,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         if diffSettings[4]:
             localAvatar.chatMgr.chatInputSpeedChat.removeCJMenu()
             localAvatar.chatMgr.chatInputSpeedChat.addCJMenu(self.bonusWeight)
+        self.__updateTopDownCameraAvailability()
 
     def __doneBattleThree(self):
         self.notify.debug('----- __doneBattleThree')
@@ -1105,6 +1230,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
 
     def exitBattleThree(self):
         self.notify.debug('----- exitBattleThree')
+        self.__disableTopDownCamera()
+        self.__destroyTopDownCameraButton()
         DistributedBossCog.DistributedBossCog.exitBattleThree(self)
         NametagGlobals.setMasterArrowsOn(1)
         bossDoneEventName = self.uniqueName('DestroyedBoss')
