@@ -110,6 +110,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.lawyerHitboxesVisible = False
         self.lawyerHitboxScale = 1.0
         self.lawyerHitboxNodes = {}
+        self.lawyerOriginalCollisionMasks = {}
         self.relaxButton = None
         self.relaxMode = False
         self.relaxHoveredLawyer = None
@@ -760,14 +761,18 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             if lawyer.doId in self.lawyerHitboxNodes:
                 continue
             radius = lawyer.getRadius()
+            originalMask = lawyer.collNode.getIntoCollideMask()
+            self.lawyerOriginalCollisionMasks[lawyer.doId] = (lawyer, originalMask)
+            lawyer.collNode.setIntoCollideMask(originalMask & ~ToontownGlobals.PieBitmask)
             hitboxNode = CollisionNode('lawyerHitboxDisplay-%s' % lawyer.doId)
             hitboxNode.setFromCollideMask(BitMask32.allOff())
-            hitboxNode.setIntoCollideMask(StunModeLawyerBitmask)
+            hitboxNode.setIntoCollideMask(StunModeLawyerBitmask | ToontownGlobals.PieBitmask)
             hitboxNode.addSolid(CollisionTube(
                 0, 0, 0.5,
                 0, 0, lawyer.getHeight() - radius,
                 radius))
             hitbox = lawyer.attachNewNode(hitboxNode)
+            hitbox.setTag('pieCode', str(ToontownGlobals.PieCodeLawyer))
             hitbox.setColor(1, 0, 0, 0.35, 1)
             hitbox.setTransparency(TransparencyAttrib.MAlpha)
             hitbox.setLightOff(1)
@@ -793,6 +798,10 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         for hitbox in self.lawyerHitboxNodes.values():
             hitbox.removeNode()
         self.lawyerHitboxNodes = {}
+        for lawyer, originalMask in self.lawyerOriginalCollisionMasks.values():
+            if hasattr(lawyer, 'collNode'):
+                lawyer.collNode.setIntoCollideMask(originalMask)
+        self.lawyerOriginalCollisionMasks = {}
 
     def __adjustLawyerHitboxScale(self, amount):
         self.lawyerHitboxScale = min(max(self.lawyerHitboxScale + amount, 0.25), 3.0)
