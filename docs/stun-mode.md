@@ -18,3 +18,7 @@ level-two lawyer from advancing while level-one lawyers remain.
 
 Outside stun mode, lawyer stuns retain the original boolean behavior and cannot
 be refreshed while active.
+
+Each completed group level displays `Stun xN` above the local Toon, where `N`
+is the maximum stun level currently held by any lawyer. The previous display is
+replaced if another group level is completed before it fades.

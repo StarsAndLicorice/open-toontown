@@ -34,6 +34,7 @@ import functools
 from toontown.coghq import CogDisguiseGlobals
 from toontown.building import ElevatorConstants
 from toontown.toonbase import ToontownTimer
+from otp.otpbase import OTPGlobals
 OneBossCog = None
 StunModeLawyerBitmask = BitMask32.bit(30)
 
@@ -125,6 +126,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.editLawyerTypeIndex = 0
         self.editSelectedLawyer = None
         self.editDraggedLawyer = None
+        self.stunLevelText = None
+        self.stunLevelTextSequence = None
         return
 
     def announceGenerate(self):
@@ -193,6 +196,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.__destroyLawyerHitboxes()
         self.__destroyRelaxButton()
         self.__destroyEditModeButtons()
+        self.__hideStunLevelText()
         DistributedBossCog.DistributedBossCog.disable(self)
         self.request('Off')
         self.unloadEnvironment()
@@ -1735,6 +1739,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.__destroyLawyerHitboxButton()
         self.__destroyLawyerHitboxes()
         self.__destroyRelaxButton()
+        self.__destroyEditModeButtons()
+        self.__hideStunLevelText()
         DistributedBossCog.DistributedBossCog.exitBattleThree(self)
         NametagGlobals.setMasterArrowsOn(1)
         bossDoneEventName = self.uniqueName('DestroyedBoss')
@@ -2575,6 +2581,39 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.bonusTimer.posInTopRightCorner()
         self.bonusTimer.show()
         self.bonusTimer.countdown(bonusDuration, self.hideBonusTimer)
+
+    def showStunLevel(self, stunLevel):
+        if not self.stunMode:
+            return
+        self.__hideStunLevelText()
+        textNode = TextNode(self.uniqueName('stunLevelText'))
+        textNode.setFont(OTPGlobals.getSignFont())
+        textNode.setText('Stun x%s' % stunLevel)
+        textNode.clearShadow()
+        textNode.setAlign(TextNode.ACenter)
+        textNode.setTextColor(1, 1, 0, 1)
+        self.stunLevelText = localAvatar.attachNewNode(textNode.generate())
+        self.stunLevelText.setPos(0, 0, localAvatar.getHeight() + 1.5)
+        self.stunLevelText.setScale(1.0)
+        self.stunLevelText.setBillboardPointEye()
+        self.stunLevelText.setBin('fixed', 100)
+        self.stunLevelTextSequence = Sequence(
+            LerpScaleInterval(self.stunLevelText, 0.12, 1.3,
+                              startScale=1.0, blendType='easeOut'),
+            LerpScaleInterval(self.stunLevelText, 0.14, 1.0,
+                              blendType='easeInOut'),
+            Wait(1.5),
+            self.stunLevelText.colorInterval(0.15, Vec4(1, 1, 0, 0)),
+            Func(self.__hideStunLevelText))
+        self.stunLevelTextSequence.start()
+
+    def __hideStunLevelText(self):
+        if self.stunLevelTextSequence:
+            self.stunLevelTextSequence.pause()
+            self.stunLevelTextSequence = None
+        if self.stunLevelText:
+            self.stunLevelText.removeNode()
+            self.stunLevelText = None
 
     def setAttackCode(self, attackCode, avId = 0):
         DistributedBossCog.DistributedBossCog.setAttackCode(self, attackCode, avId)

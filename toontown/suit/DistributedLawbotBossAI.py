@@ -876,6 +876,9 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
             taskMgr.remove(self.uniqueName('clearBonus'))
         taskMgr.doMethodLater(bonusDuration, self.clearBonus, self.uniqueName('clearBonus'))
         self.sendUpdate('enteredBonusState', [])
+        if self.stunMode and self.lawyers:
+            stunLevel = max(lawyer.stunLevel for lawyer in self.lawyers)
+            self.sendUpdate('showStunLevel', [stunLevel])
 
     def areAllLawyersStunned(self):
         for lawyer in self.lawyers:

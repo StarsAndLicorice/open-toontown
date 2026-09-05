@@ -2634,6 +2634,7 @@ dclass DistributedLawbotBoss : DistributedBossCog {
   setTaunt(int8, int8) broadcast;
   toonGotHealed(uint32) broadcast;
   enteredBonusState() broadcast;
+  showStunLevel(uint16) broadcast;
   setBattleDifficulty(uint8) broadcast ram;
   prepareScaleRound(uint32, int8, uint8) broadcast;
   resetScaleRound(uint16) broadcast;
