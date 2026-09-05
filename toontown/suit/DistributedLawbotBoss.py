@@ -34,6 +34,7 @@ from toontown.coghq import CogDisguiseGlobals
 from toontown.building import ElevatorConstants
 from toontown.toonbase import ToontownTimer
 OneBossCog = None
+StunModeLawyerBitmask = BitMask32.bit(30)
 
 class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
     notify = DirectNotifyGlobal.directNotify.newCategory('DistributedLawbotBoss')
@@ -104,8 +105,14 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.lawyerPickerRay = None
         self.lawyerPickerNodePath = None
         self.lawyerHitboxButton = None
+        self.lawyerHitboxDecreaseButton = None
+        self.lawyerHitboxIncreaseButton = None
         self.lawyerHitboxesVisible = False
+        self.lawyerHitboxScale = 1.0
         self.lawyerHitboxNodes = {}
+        self.relaxButton = None
+        self.relaxMode = False
+        self.relaxHoveredLawyer = None
         return
 
     def announceGenerate(self):
@@ -171,6 +178,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.__disableTopDownCamera()
         self.__destroyTopDownCameraButton()
         self.__destroyLawyerHitboxButton()
+        self.__destroyLawyerHitboxes()
+        self.__destroyRelaxButton()
         DistributedBossCog.DistributedBossCog.disable(self)
         self.request('Off')
         self.unloadEnvironment()
@@ -626,11 +635,14 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         if self.stunMode and (state == 'BattleThree' or enteringBattleThree):
             self.__showTopDownCameraButton()
             self.__showLawyerHitboxButton()
+            self.__showRelaxButton()
+            self.__ensureLawyerHitboxes()
         else:
             self.__disableTopDownCamera()
             self.__destroyTopDownCameraButton()
             self.__destroyLawyerHitboxButton()
-            self.__hideLawyerHitboxes()
+            self.__destroyLawyerHitboxes()
+            self.__destroyRelaxButton()
 
     def __showTopDownCameraButton(self):
         if self.topDownCameraButton:
@@ -681,12 +693,52 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             textMayChange=1,
             sortOrder=DGG.FOREGROUND_SORT_INDEX,
             command=self.__toggleLawyerHitboxes)
+        self.lawyerHitboxDecreaseButton = DirectButton(
+            parent=base.a2dTopRight,
+            relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'),
+                   buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(0.55, 1, 1),
+            pos=(-0.43, 0, -0.48),
+            text='-',
+            text_font=ToontownGlobals.getInterfaceFont(),
+            text_scale=0.07,
+            text_pos=(0, -0.022),
+            text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1),
+            sortOrder=DGG.FOREGROUND_SORT_INDEX,
+            command=self.__adjustLawyerHitboxScale,
+            extraArgs=[-0.1])
+        self.lawyerHitboxIncreaseButton = DirectButton(
+            parent=base.a2dTopRight,
+            relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'),
+                   buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(0.55, 1, 1),
+            pos=(-0.13, 0, -0.48),
+            text='+',
+            text_font=ToontownGlobals.getInterfaceFont(),
+            text_scale=0.065,
+            text_pos=(0, -0.02),
+            text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1),
+            sortOrder=DGG.FOREGROUND_SORT_INDEX,
+            command=self.__adjustLawyerHitboxScale,
+            extraArgs=[0.1])
         buttonGui.removeNode()
 
     def __destroyLawyerHitboxButton(self):
         if self.lawyerHitboxButton:
             self.lawyerHitboxButton.destroy()
             self.lawyerHitboxButton = None
+        if self.lawyerHitboxDecreaseButton:
+            self.lawyerHitboxDecreaseButton.destroy()
+            self.lawyerHitboxDecreaseButton = None
+        if self.lawyerHitboxIncreaseButton:
+            self.lawyerHitboxIncreaseButton.destroy()
+            self.lawyerHitboxIncreaseButton = None
 
     def __toggleLawyerHitboxes(self):
         self.lawyerHitboxesVisible = not self.lawyerHitboxesVisible
@@ -699,13 +751,18 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                                                else 'Show Hitboxes')
 
     def __showLawyerHitboxes(self):
+        self.__ensureLawyerHitboxes()
+        for hitbox in self.lawyerHitboxNodes.values():
+            hitbox.show()
+
+    def __ensureLawyerHitboxes(self):
         for lawyer in self.lawyers:
             if lawyer.doId in self.lawyerHitboxNodes:
                 continue
             radius = lawyer.getRadius()
             hitboxNode = CollisionNode('lawyerHitboxDisplay-%s' % lawyer.doId)
             hitboxNode.setFromCollideMask(BitMask32.allOff())
-            hitboxNode.setIntoCollideMask(BitMask32.allOff())
+            hitboxNode.setIntoCollideMask(StunModeLawyerBitmask)
             hitboxNode.addSolid(CollisionTube(
                 0, 0, 0.5,
                 0, 0, lawyer.getHeight() - radius,
@@ -717,16 +774,66 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             hitbox.setDepthWrite(False)
             hitbox.setRenderModeFilled(1)
             hitbox.setBin('transparent', 30)
-            hitbox.show()
+            hitbox.setScale(self.lawyerHitboxScale, self.lawyerHitboxScale, 1)
+            if self.lawyerHitboxesVisible:
+                hitbox.show()
+            else:
+                hitbox.hide()
             self.lawyerHitboxNodes[lawyer.doId] = hitbox
 
     def __hideLawyerHitboxes(self):
         self.lawyerHitboxesVisible = False
         for hitbox in self.lawyerHitboxNodes.values():
-            hitbox.removeNode()
-        self.lawyerHitboxNodes = {}
+            hitbox.hide()
         if self.lawyerHitboxButton:
             self.lawyerHitboxButton['text'] = 'Show Hitboxes'
+
+    def __destroyLawyerHitboxes(self):
+        self.__hideLawyerHitboxes()
+        for hitbox in self.lawyerHitboxNodes.values():
+            hitbox.removeNode()
+        self.lawyerHitboxNodes = {}
+
+    def __adjustLawyerHitboxScale(self, amount):
+        self.lawyerHitboxScale = min(max(self.lawyerHitboxScale + amount, 0.25), 3.0)
+        for hitbox in self.lawyerHitboxNodes.values():
+            hitbox.setScale(self.lawyerHitboxScale, self.lawyerHitboxScale, 1)
+
+    def __showRelaxButton(self):
+        if self.relaxButton:
+            return
+        buttonGui = loader.loadModel('phase_3/models/gui/quit_button')
+        self.relaxButton = DirectButton(
+            parent=base.a2dTopRight,
+            relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'),
+                   buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(1.25, 1, 1),
+            pos=(-0.28, 0, -0.60),
+            text='Relax: Off',
+            text_font=ToontownGlobals.getInterfaceFont(),
+            text_scale=0.045,
+            text_pos=(0, -0.015),
+            text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1),
+            textMayChange=1,
+            sortOrder=DGG.FOREGROUND_SORT_INDEX,
+            command=self.__toggleRelaxMode)
+        buttonGui.removeNode()
+
+    def __destroyRelaxButton(self):
+        self.relaxMode = False
+        self.relaxHoveredLawyer = None
+        if self.relaxButton:
+            self.relaxButton.destroy()
+            self.relaxButton = None
+
+    def __toggleRelaxMode(self):
+        self.relaxMode = not self.relaxMode
+        self.relaxHoveredLawyer = None
+        if self.relaxButton:
+            self.relaxButton['text'] = 'Relax: On' if self.relaxMode else 'Relax: Off'
 
     def __toggleTopDownCamera(self):
         if not self.stunMode or getattr(self, 'state', None) != 'BattleThree':
@@ -772,6 +879,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.ignore('v')
         self.ignore('v-up')
         self.__resetSpecialThrowKeys()
+        self.relaxHoveredLawyer = None
         self.__destroyLawyerPicker()
         taskMgr.remove(self.uniqueName('topDownCamera'))
         self.__closeNormalCameraWindow()
@@ -831,7 +939,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         if self.lawyerPickerTraverser:
             return
         pickerNode = CollisionNode(self.uniqueName('lawyerPicker'))
-        pickerNode.setFromCollideMask(ToontownGlobals.PieBitmask)
+        pickerNode.setFromCollideMask(StunModeLawyerBitmask)
         pickerNode.setIntoCollideMask(BitMask32.allOff())
         self.lawyerPickerRay = CollisionRay()
         pickerNode.addSolid(self.lawyerPickerRay)
@@ -850,19 +958,20 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.lawyerPickerRay = None
         self.lawyerPickerNodePath = None
 
-    def __cursorIntersectsLawyer(self, mousePos):
+    def __getLawyerUnderCursor(self, mousePos):
         if not self.lawyerPickerTraverser:
-            return False
+            return None
+        self.__ensureLawyerHitboxes()
         self.lawyerPickerRay.setFromLens(base.camNode, mousePos[0], mousePos[1])
         self.lawyerPickerQueue.clearEntries()
         self.lawyerPickerTraverser.traverse(render)
         self.lawyerPickerQueue.sortEntries()
         for index in range(self.lawyerPickerQueue.getNumEntries()):
             entry = self.lawyerPickerQueue.getEntry(index)
-            pieCode = entry.getIntoNodePath().getNetTag('pieCode')
-            if pieCode and int(pieCode) == ToontownGlobals.PieCodeLawyer:
-                return True
-        return False
+            name = entry.getIntoNodePath().getName()
+            if name.startswith('lawyerHitboxDisplay-'):
+                return int(name.rsplit('-', 1)[1])
+        return None
 
     def __openNormalCameraWindow(self):
         if self.normalCameraWindow:
@@ -940,8 +1049,20 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                     if offset[0] * offset[0] + offset[1] * offset[1] > 0.0001:
                         heading = math.degrees(math.atan2(-offset[0], offset[1]))
                         localAvatar.setH(render, heading)
-            if self.specialThrowActiveKey is not None and self.__cursorIntersectsLawyer(mousePos):
-                self.__consumeSpecialThrow()
+            lawyerDoId = self.__getLawyerUnderCursor(mousePos)
+            if self.specialThrowActiveKey is not None:
+                if lawyerDoId is not None:
+                    self.__consumeSpecialThrow()
+                    # Relax must not produce a second pie for the same hover
+                    # immediately after a manually staged special throw.
+                    self.relaxHoveredLawyer = lawyerDoId
+            elif self.relaxMode:
+                if lawyerDoId is None:
+                    self.relaxHoveredLawyer = None
+                elif lawyerDoId != self.relaxHoveredLawyer:
+                    self.relaxHoveredLawyer = lawyerDoId
+                    if localAvatar.beginSpecialPieThrow():
+                        localAvatar.releaseSpecialPieThrow()
         return Task.cont
 
     def loadCannons(self):
@@ -1457,7 +1578,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.__disableTopDownCamera()
         self.__destroyTopDownCameraButton()
         self.__destroyLawyerHitboxButton()
-        self.__hideLawyerHitboxes()
+        self.__destroyLawyerHitboxes()
+        self.__destroyRelaxButton()
         DistributedBossCog.DistributedBossCog.exitBattleThree(self)
         NametagGlobals.setMasterArrowsOn(1)
         bossDoneEventName = self.uniqueName('DestroyedBoss')
