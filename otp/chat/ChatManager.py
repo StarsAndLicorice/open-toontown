@@ -42,7 +42,10 @@ class ChatManager(DirectObject.DirectObject):
     def __init__(self, cr, localAvatar):
         self.cr = cr
         self.localAvatar = localAvatar
-        self.wantBackgroundFocus = 1
+        # Typed chat is explicitly opened with Enter.  Leaving background
+        # focus enabled makes any printable key activate the chat entry,
+        # preventing gameplay systems from safely binding letter keys.
+        self.wantBackgroundFocus = 0
         self.__scObscured = 0
         self.__normalObscured = 0
         self.openChatWarning = None
@@ -215,6 +218,7 @@ class ChatManager(DirectObject.DirectObject):
         if self.localAvatar.canChat() or self.cr.wantMagicWords:
             if self.wantBackgroundFocus:
                 self.chatInputNormal.chatEntry['backgroundFocus'] = 1
+            self.acceptOnce('enter', self.fsm.request, ['normalChat'])
             self.acceptOnce('enterNormalChat', self.fsm.request, ['normalChat'])
 
     def checkObscurred(self):
@@ -227,6 +231,7 @@ class ChatManager(DirectObject.DirectObject):
         self.scButton.hide()
         self.normalButton.hide()
         self.ignore('enterNormalChat')
+        self.ignore('enter')
         if self.wantBackgroundFocus:
             self.chatInputNormal.chatEntry['backgroundFocus'] = 0
 
@@ -317,10 +322,12 @@ class ChatManager(DirectObject.DirectObject):
                 if self.wantBackgroundFocus:
                     self.chatInputNormal.chatEntry['backgroundFocus'] = 1
                 self.acceptOnce('enterNormalChat', self.fsm.request, ['whisperChatPlayer', [avatarName, playerId]])
+                self.acceptOnce('enter', self.fsm.request, ['whisperChatPlayer', [avatarName, playerId]])
             elif online and chatToToon:
                 if self.wantBackgroundFocus:
                     self.chatInputNormal.chatEntry['backgroundFocus'] = 1
                 self.acceptOnce('enterNormalChat', self.fsm.request, ['whisperChat', [avatarName, avatarId]])
+                self.acceptOnce('enter', self.fsm.request, ['whisperChat', [avatarName, avatarId]])
         if ConfigVariableBool('force-typed-whisper-enabled', 0).value:
             self.whisperButton['state'] = 'normal'
             self.enablewhisperButton()
@@ -341,6 +348,7 @@ class ChatManager(DirectObject.DirectObject):
     def exitWhisper(self):
         self.whisperFrame.hide()
         self.ignore('enterNormalChat')
+        self.ignore('enter')
         self.chatInputNormal.chatEntry['backgroundFocus'] = 0
 
     def enterWhisperSpeedChat(self, avatarId):
