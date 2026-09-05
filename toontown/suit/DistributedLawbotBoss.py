@@ -93,6 +93,9 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.topDownCameraHpr = None
         self.topDownCameraHadSmartCamera = False
         self.topDownCameraButton = None
+        self.normalCameraWindow = None
+        self.normalCamera = None
+        self.normalCameraLens = None
         return
 
     def announceGenerate(self):
@@ -666,16 +669,19 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.accept('wheel_up', self.__adjustTopDownCameraHeight, [5.0])
         self.accept('wheel_down', self.__adjustTopDownCameraHeight, [-5.0])
         taskMgr.add(self.__updateTopDownCamera, self.uniqueName('topDownCamera'), priority=48)
+        self.__openNormalCameraWindow()
         if self.topDownCameraButton:
             self.topDownCameraButton['text'] = 'Normal View'
 
     def __disableTopDownCamera(self):
         if not self.topDownCameraEnabled:
+            self.__closeNormalCameraWindow()
             return
         self.topDownCameraEnabled = False
         self.ignore('wheel_up')
         self.ignore('wheel_down')
         taskMgr.remove(self.uniqueName('topDownCamera'))
+        self.__closeNormalCameraWindow()
         if self.topDownCameraParent and not self.topDownCameraParent.isEmpty():
             camera.reparentTo(self.topDownCameraParent)
             camera.setPos(self.topDownCameraPos)
@@ -695,6 +701,58 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         if self.topDownCameraEnabled:
             self.topDownCameraHeight = min(max(self.topDownCameraHeight + amount, 10.0), 150.0)
 
+    def __openNormalCameraWindow(self):
+        if self.normalCameraWindow:
+            return
+        properties = WindowProperties()
+        properties.setSize(640, 480)
+        properties.setTitle('Toontown - Normal Camera')
+        normalWindow = base.openWindow(
+            props=properties,
+            gsg=base.win.getGsg(),
+            makeCamera=False,
+            requireWindow=False)
+        if not normalWindow:
+            self.notify.warning('Could not open the normal-camera window.')
+            return
+
+        lens = PerspectiveLens()
+        lens.setFov(base.camLens.getFov())
+        lens.setNearFar(base.camLens.getNear(), base.camLens.getFar())
+        lens.setAspectRatio(640.0 / 480.0)
+        normalCamera = base.makeCamera(
+            normalWindow,
+            scene=render,
+            lens=lens,
+            camName=self.uniqueName('normalCamera'))
+        normalCamera.reparentTo(localAvatar)
+        normalCamera.setPos(localAvatar.cameraPositions[0][0])
+        normalCamera.setHpr(0, 0, 0)
+        self.normalCameraWindow = normalWindow
+        self.normalCamera = normalCamera
+        self.normalCameraLens = lens
+
+    def __closeNormalCameraWindow(self):
+        normalWindow = self.normalCameraWindow
+        self.normalCameraWindow = None
+        self.normalCamera = None
+        self.normalCameraLens = None
+        if normalWindow and normalWindow in base.winList:
+            base.closeWindow(normalWindow)
+
+    def __updateNormalCameraWindow(self):
+        if not self.normalCameraWindow:
+            return
+        properties = self.normalCameraWindow.getProperties()
+        if not properties.getOpen():
+            self.__closeNormalCameraWindow()
+            return
+        if self.normalCameraWindow.hasSize():
+            width = self.normalCameraWindow.getXSize()
+            height = self.normalCameraWindow.getYSize()
+            if height:
+                self.normalCameraLens.setAspectRatio(float(width) / height)
+
     def __updateTopDownCamera(self, task):
         if not self.stunMode or getattr(self, 'state', None) != 'BattleThree':
             self.__disableTopDownCamera()
@@ -703,6 +761,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         toonPos = localAvatar.getPos(render)
         camera.setPos(render, toonPos[0], toonPos[1], toonPos[2] + self.topDownCameraHeight)
         camera.setHpr(render, 0, -90, 0)
+        self.__updateNormalCameraWindow()
 
         if base.mouseWatcherNode.hasMouse():
             mousePos = base.mouseWatcherNode.getMouse()
