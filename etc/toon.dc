@@ -2638,6 +2638,10 @@ dclass DistributedLawbotBoss : DistributedBossCog {
   prepareScaleRound(uint32, int8, uint8) broadcast;
   resetScaleRound(uint16) broadcast;
   setStunMode(bool) broadcast ram;
+  moveStunModeLawyer(uint32, int16/10, int16/10) airecv clsend;
+  addStunModeLawyer(string) airecv clsend;
+  deleteStunModeLawyer(uint32) airecv clsend;
+  resetStunModeLawyers() airecv clsend;
   showScaleRoundTime(uint32/1000) broadcast;
 };
 

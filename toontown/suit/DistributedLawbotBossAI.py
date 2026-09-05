@@ -791,6 +791,57 @@ class DistributedLawbotBossAI(DistributedBossCogAI.DistributedBossCogAI, FSM.FSM
         self.__sendLawyerIds()
         return
 
+    def __canEditStunModeLawyers(self):
+        avId = self.air.getAvatarIdFromSender()
+        return self.stunMode and avId in self.involvedToons and self.state == 'BattleThree'
+
+    def moveStunModeLawyer(self, lawyerDoId, x, y):
+        if not self.__canEditStunModeLawyers():
+            return
+        for lawyer in self.lawyers:
+            if lawyer.doId == lawyerDoId:
+                posHpr = (x, y, lawyer.getZ(), lawyer.getH(), 0, 0)
+                lawyer.setPosHpr(*posHpr)
+                lawyer.sendUpdate('setPosHpr', list(posHpr))
+                return
+
+    def addStunModeLawyer(self, suitType):
+        if not self.__canEditStunModeLawyers():
+            return
+        lawCogChoices = ['b', 'dt', 'ac', 'bs', 'sd', 'le', 'bw']
+        if suitType not in lawCogChoices:
+            return
+        if len(self.lawyers) >= len(ToontownGlobals.LawbotBossLawyerPosHprs):
+            return
+        suit = DistributedLawbotBossSuitAI.DistributedLawbotBossSuitAI(self.air, None)
+        suit.dna = SuitDNA.SuitDNA()
+        suit.dna.newSuit(suitType)
+        suit.setPosHpr(*ToontownGlobals.LawbotBossLawyerPosHprs[len(self.lawyers)])
+        suit.setBoss(self)
+        suit.generateWithRequired(self.zoneId)
+        self.lawyers.append(suit)
+        self.__sendLawyerIds()
+
+    def deleteStunModeLawyer(self, lawyerDoId):
+        if not self.__canEditStunModeLawyers():
+            return
+        for lawyer in self.lawyers:
+            if lawyer.doId == lawyerDoId:
+                self.lawyers.remove(lawyer)
+                lawyer.requestDelete()
+                self.__sendLawyerIds()
+                return
+
+    def resetStunModeLawyers(self):
+        if not self.__canEditStunModeLawyers():
+            return
+        for index, lawyer in enumerate(self.lawyers):
+            if index >= len(ToontownGlobals.LawbotBossLawyerPosHprs):
+                break
+            posHpr = ToontownGlobals.LawbotBossLawyerPosHprs[index]
+            lawyer.setPosHpr(*posHpr)
+            lawyer.sendUpdate('setPosHpr', list(posHpr))
+
     def hitChair(self, chairIndex, npcToonIndex):
         avId = self.air.getAvatarIdFromSender()
         if not self.validate(avId, avId in self.involvedToons, 'hitChair from unknown avatar'):

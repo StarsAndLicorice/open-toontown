@@ -19,6 +19,7 @@ from toontown.toonbase import TTLocalizer
 from . import SuitDNA
 from toontown.toon import Toon
 from toontown.battle import BattleBase
+from toontown.battle import SuitBattleGlobals
 from direct.directutil import Mopath
 from direct.showutil import Rope
 from toontown.distributed import DelayDelete
@@ -114,6 +115,16 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.relaxButton = None
         self.relaxMode = False
         self.relaxHoveredLawyer = None
+        self.editModeButton = None
+        self.editDeleteButton = None
+        self.editAddButton = None
+        self.editTypeButton = None
+        self.editResetButton = None
+        self.editMode = False
+        self.editLawyerTypes = ['b', 'dt', 'ac', 'bs', 'sd', 'le', 'bw']
+        self.editLawyerTypeIndex = 0
+        self.editSelectedLawyer = None
+        self.editDraggedLawyer = None
         return
 
     def announceGenerate(self):
@@ -181,6 +192,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.__destroyLawyerHitboxButton()
         self.__destroyLawyerHitboxes()
         self.__destroyRelaxButton()
+        self.__destroyEditModeButtons()
         DistributedBossCog.DistributedBossCog.disable(self)
         self.request('Off')
         self.unloadEnvironment()
@@ -245,6 +257,9 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.placeToonInElevator(toon)
 
     def setLawyerIds(self, lawyerIds):
+        self.__destroyLawyerHitboxes()
+        self.editSelectedLawyer = None
+        self.editDraggedLawyer = None
         self.lawyers = []
         self.cr.relatedObjectMgr.abortRequest(self.lawyerRequest)
         self.lawyerRequest = self.cr.relatedObjectMgr.requestObjects(lawyerIds, allCallback=self.__gotLawyers)
@@ -257,6 +272,9 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             suit.fsm.request('neutral')
             suit.loop('neutral')
             suit.setBossCogId(self.doId)
+
+        if self.stunMode:
+            self.__ensureLawyerHitboxes()
 
         return
 
@@ -637,6 +655,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.__showTopDownCameraButton()
             self.__showLawyerHitboxButton()
             self.__showRelaxButton()
+            self.__showEditModeButtons()
             self.__ensureLawyerHitboxes()
         else:
             self.__disableTopDownCamera()
@@ -644,6 +663,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.__destroyLawyerHitboxButton()
             self.__destroyLawyerHitboxes()
             self.__destroyRelaxButton()
+            self.__destroyEditModeButtons()
 
     def __showTopDownCameraButton(self):
         if self.topDownCameraButton:
@@ -788,8 +808,11 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
 
     def __hideLawyerHitboxes(self):
         self.lawyerHitboxesVisible = False
-        for hitbox in self.lawyerHitboxNodes.values():
-            hitbox.hide()
+        for lawyerDoId, hitbox in self.lawyerHitboxNodes.items():
+            if self.editMode and lawyerDoId == self.editSelectedLawyer:
+                hitbox.show()
+            else:
+                hitbox.hide()
         if self.lawyerHitboxButton:
             self.lawyerHitboxButton['text'] = 'Show Hitboxes'
 
@@ -799,7 +822,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             hitbox.removeNode()
         self.lawyerHitboxNodes = {}
         for lawyer, originalMask in self.lawyerOriginalCollisionMasks.values():
-            if hasattr(lawyer, 'collNode'):
+            if (hasattr(lawyer, 'collNode') and
+                    not lawyer.isEmpty()):
                 lawyer.collNode.setIntoCollideMask(originalMask)
         self.lawyerOriginalCollisionMasks = {}
 
@@ -844,6 +868,119 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         if self.relaxButton:
             self.relaxButton['text'] = 'Relax: On' if self.relaxMode else 'Relax: Off'
 
+    def __showEditModeButtons(self):
+        if self.editModeButton:
+            return
+        buttonGui = loader.loadModel('phase_3/models/gui/quit_button')
+        images = (buttonGui.find('**/QuitBtn_UP'),
+                  buttonGui.find('**/QuitBtn_DN'),
+                  buttonGui.find('**/QuitBtn_RLVR'))
+        common = dict(parent=base.a2dTopLeft, relief=None, image=images,
+                      text_font=ToontownGlobals.getInterfaceFont(), text_scale=0.04,
+                      text_pos=(0, -0.013), text_fg=(1, 1, 1, 1),
+                      text_shadow=(0, 0, 0, 1), textMayChange=1,
+                      sortOrder=DGG.FOREGROUND_SORT_INDEX)
+        self.editModeButton = DirectButton(pos=(0.28, 0, -0.24), image_scale=(1.25, 1, 1),
+                                           text='Edit Mode: Off', command=self.__toggleEditMode,
+                                           **common)
+        self.editDeleteButton = DirectButton(pos=(0.28, 0, -0.36), image_scale=(1.25, 1, 1),
+                                             text='Delete Selected', command=self.__deleteSelectedLawyer,
+                                             **common)
+        self.editAddButton = DirectButton(pos=(0.28, 0, -0.48), image_scale=(1.25, 1, 1),
+                                          text='Add', command=self.__addLawyer, **common)
+        self.editTypeButton = DirectButton(pos=(0.28, 0, -0.60), image_scale=(1.25, 1, 1),
+                                           text='', command=self.__cycleLawyerType, **common)
+        self.editResetButton = DirectButton(pos=(0.28, 0, -0.72), image_scale=(1.25, 1, 1),
+                                            text='Reset Lawyers', command=self.__resetLawyers,
+                                            **common)
+        self.__updateLawyerTypeButton()
+        self.__setEditControlsVisible(False)
+        buttonGui.removeNode()
+
+    def __destroyEditModeButtons(self):
+        self.__setEditMode(False)
+        for name in ('editModeButton', 'editDeleteButton', 'editAddButton',
+                     'editTypeButton', 'editResetButton'):
+            button = getattr(self, name, None)
+            if button:
+                button.destroy()
+                setattr(self, name, None)
+
+    def __setEditControlsVisible(self, visible):
+        for button in (self.editDeleteButton, self.editAddButton,
+                       self.editTypeButton, self.editResetButton):
+            if button:
+                button.show() if visible else button.hide()
+
+    def __toggleEditMode(self):
+        self.__setEditMode(not self.editMode)
+
+    def __setEditMode(self, enabled):
+        enabled = bool(enabled and self.stunMode and
+                       getattr(self, 'state', None) == 'BattleThree')
+        if enabled == self.editMode:
+            return
+        self.editMode = enabled
+        self.editDraggedLawyer = None
+        if enabled:
+            if not self.topDownCameraEnabled:
+                self.__enableTopDownCamera()
+            self.accept('mouse1', self.__beginLawyerDrag)
+            self.accept('mouse1-up', self.__endLawyerDrag)
+        else:
+            self.ignore('mouse1')
+            self.ignore('mouse1-up')
+            self.__selectLawyer(None)
+        if self.editModeButton:
+            self.editModeButton['text'] = 'Edit Mode: On' if enabled else 'Edit Mode: Off'
+        self.__setEditControlsVisible(enabled)
+
+    def __selectLawyer(self, lawyerDoId):
+        previous = self.lawyerHitboxNodes.get(self.editSelectedLawyer)
+        if previous:
+            previous.setColor(1, 0, 0, 0.35, 1)
+            if not self.lawyerHitboxesVisible:
+                previous.hide()
+        self.editSelectedLawyer = lawyerDoId
+        selected = self.lawyerHitboxNodes.get(lawyerDoId)
+        if selected:
+            selected.setColor(1, 1, 0, 0.55, 1)
+            selected.show()
+
+    def __beginLawyerDrag(self):
+        if not self.editMode or not base.mouseWatcherNode.hasMouse():
+            return
+        lawyerDoId = self.__getLawyerUnderCursor(base.mouseWatcherNode.getMouse())
+        self.__selectLawyer(lawyerDoId)
+        self.editDraggedLawyer = lawyerDoId
+
+    def __endLawyerDrag(self):
+        self.editDraggedLawyer = None
+
+    def __deleteSelectedLawyer(self):
+        if self.editMode and self.editSelectedLawyer is not None:
+            self.sendUpdate('deleteStunModeLawyer', [self.editSelectedLawyer])
+            self.__selectLawyer(None)
+
+    def __addLawyer(self):
+        if self.editMode:
+            self.sendUpdate('addStunModeLawyer',
+                            [self.editLawyerTypes[self.editLawyerTypeIndex]])
+
+    def __cycleLawyerType(self):
+        self.editLawyerTypeIndex = (self.editLawyerTypeIndex + 1) % len(self.editLawyerTypes)
+        self.__updateLawyerTypeButton()
+
+    def __updateLawyerTypeButton(self):
+        if not self.editTypeButton:
+            return
+        suitType = self.editLawyerTypes[self.editLawyerTypeIndex]
+        self.editTypeButton['text'] = SuitBattleGlobals.SuitAttributes[suitType]['name']
+
+    def __resetLawyers(self):
+        if self.editMode:
+            self.sendUpdate('resetStunModeLawyers', [])
+
     def __toggleTopDownCamera(self):
         if not self.stunMode or getattr(self, 'state', None) != 'BattleThree':
             return
@@ -881,6 +1018,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.__closeNormalCameraWindow()
             return
         self.topDownCameraEnabled = False
+        if self.editMode:
+            self.__setEditMode(False)
         self.ignore('wheel_up')
         self.ignore('wheel_down')
         self.ignore('c')
@@ -1054,6 +1193,13 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                 cursorPoint = Point3()
                 toonPlane = Plane(Vec3(0, 0, 1), toonPos)
                 if toonPlane.intersectsLine(cursorPoint, nearPoint, farPoint):
+                    if self.editMode and self.editDraggedLawyer is not None:
+                        lawyer = self.cr.doId2do.get(self.editDraggedLawyer)
+                        if lawyer:
+                            lawyer.setPos(render, cursorPoint[0], cursorPoint[1], lawyer.getZ(render))
+                            self.sendUpdate('moveStunModeLawyer',
+                                            [self.editDraggedLawyer,
+                                             cursorPoint[0], cursorPoint[1]])
                     offset = cursorPoint - toonPos
                     if offset[0] * offset[0] + offset[1] * offset[1] > 0.0001:
                         heading = math.degrees(math.atan2(-offset[0], offset[1]))
