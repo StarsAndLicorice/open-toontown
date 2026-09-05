@@ -1041,6 +1041,9 @@ class LocalAvatar(DistributedAvatar.DistributedAvatar, DistributedSmoothNode.Dis
 
     def trackAnimToSpeed(self, task):
         speed, rotSpeed, slideSpeed = self.controlManager.getSpeeds()
+        cursorRotationDeadline = getattr(self, 'cursorRotationAnimDeadline', 0.0)
+        if rotSpeed == 0.0 and globalClock.getFrameTime() < cursorRotationDeadline:
+            rotSpeed = getattr(self, 'cursorRotationAnimSpeed', 1.0)
         if speed != 0.0 or rotSpeed != 0.0 or inputState.isSet('jump'):
             if not self.movingFlag:
                 self.movingFlag = 1

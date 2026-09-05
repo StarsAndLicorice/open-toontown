@@ -99,6 +99,12 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.normalCameraWindow = None
         self.normalCamera = None
         self.normalCameraLens = None
+        self.normalCameraUiRoot = None
+        self.normalCameraUiCamera = None
+        self.normalCameraUiLens = None
+        self.normalCameraUiDisplayRegion = None
+        self.normalCameraBonusTimer = None
+        self.originalSfxLocalizedVolume = None
         self.specialThrowHeldKeys = set()
         self.specialThrowConsumedKeys = set()
         self.specialThrowActiveKey = None
@@ -116,6 +122,11 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.relaxButton = None
         self.relaxMode = False
         self.relaxHoveredLawyer = None
+        self.relaxGracePeriod = 0.1
+        self.relaxLastThrowTimes = {}
+        self.relaxGraceButton = None
+        self.relaxGraceDecreaseButton = None
+        self.relaxGraceIncreaseButton = None
         self.editModeButton = None
         self.editDeleteButton = None
         self.editAddButton = None
@@ -857,20 +868,61 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             textMayChange=1,
             sortOrder=DGG.FOREGROUND_SORT_INDEX,
             command=self.__toggleRelaxMode)
+        self.relaxGraceButton = DirectButton(
+            parent=base.a2dTopRight, relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'), buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(1.25, 1, 1), pos=(-0.28, 0, -0.72), text='',
+            text_font=ToontownGlobals.getInterfaceFont(), text_scale=0.04,
+            text_pos=(0, -0.013), text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1), textMayChange=1,
+            sortOrder=DGG.FOREGROUND_SORT_INDEX)
+        self.relaxGraceDecreaseButton = DirectButton(
+            parent=base.a2dTopRight, relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'), buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(0.55, 1, 1), pos=(-0.43, 0, -0.84), text='-',
+            text_font=ToontownGlobals.getInterfaceFont(), text_scale=0.07,
+            text_pos=(0, -0.022), text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1), sortOrder=DGG.FOREGROUND_SORT_INDEX,
+            command=self.__adjustRelaxGracePeriod, extraArgs=[-0.01])
+        self.relaxGraceIncreaseButton = DirectButton(
+            parent=base.a2dTopRight, relief=None,
+            image=(buttonGui.find('**/QuitBtn_UP'), buttonGui.find('**/QuitBtn_DN'),
+                   buttonGui.find('**/QuitBtn_RLVR')),
+            image_scale=(0.55, 1, 1), pos=(-0.13, 0, -0.84), text='+',
+            text_font=ToontownGlobals.getInterfaceFont(), text_scale=0.065,
+            text_pos=(0, -0.02), text_fg=(1, 1, 1, 1),
+            text_shadow=(0, 0, 0, 1), sortOrder=DGG.FOREGROUND_SORT_INDEX,
+            command=self.__adjustRelaxGracePeriod, extraArgs=[0.01])
+        self.__updateRelaxGraceButton()
         buttonGui.removeNode()
 
     def __destroyRelaxButton(self):
         self.relaxMode = False
         self.relaxHoveredLawyer = None
-        if self.relaxButton:
-            self.relaxButton.destroy()
-            self.relaxButton = None
+        self.relaxLastThrowTimes = {}
+        for name in ('relaxButton', 'relaxGraceButton',
+                     'relaxGraceDecreaseButton', 'relaxGraceIncreaseButton'):
+            button = getattr(self, name, None)
+            if button:
+                button.destroy()
+                setattr(self, name, None)
 
     def __toggleRelaxMode(self):
         self.relaxMode = not self.relaxMode
         self.relaxHoveredLawyer = None
         if self.relaxButton:
             self.relaxButton['text'] = 'Relax: On' if self.relaxMode else 'Relax: Off'
+
+    def __adjustRelaxGracePeriod(self, amount):
+        self.relaxGracePeriod = min(max(self.relaxGracePeriod + amount, 0.0), 2.0)
+        self.relaxGracePeriod = round(self.relaxGracePeriod, 2)
+        self.__updateRelaxGraceButton()
+
+    def __updateRelaxGraceButton(self):
+        if self.relaxGraceButton:
+            self.relaxGraceButton['text'] = 'Grace: %d ms' % round(self.relaxGracePeriod * 1000)
 
     def __showEditModeButtons(self):
         if self.editModeButton:
@@ -1014,6 +1066,7 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.__createLawyerPicker()
         taskMgr.add(self.__updateTopDownCamera, self.uniqueName('topDownCamera'), priority=48)
         self.__openNormalCameraWindow()
+        self.__useNormalCameraForAudio()
         if self.topDownCameraButton:
             self.topDownCameraButton['text'] = 'Normal View'
 
@@ -1031,9 +1084,12 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.ignore('v')
         self.ignore('v-up')
         self.__resetSpecialThrowKeys()
+        localAvatar.cursorRotationAnimDeadline = 0.0
+        localAvatar.cursorRotationAnimSpeed = 0.0
         self.relaxHoveredLawyer = None
         self.__destroyLawyerPicker()
         taskMgr.remove(self.uniqueName('topDownCamera'))
+        self.__restoreDefaultAudioListener()
         self.__closeNormalCameraWindow()
         if self.topDownCameraParent and not self.topDownCameraParent.isEmpty():
             camera.reparentTo(self.topDownCameraParent)
@@ -1155,9 +1211,65 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
         self.normalCameraWindow = normalWindow
         self.normalCamera = normalCamera
         self.normalCameraLens = lens
+        self.__createNormalCameraTimer()
+
+    def __createNormalCameraTimer(self):
+        if not self.normalCameraWindow or self.normalCameraUiRoot:
+            return
+        aspect = float(self.normalCameraWindow.getXSize()) / max(self.normalCameraWindow.getYSize(), 1)
+        self.normalCameraUiRoot = NodePath(self.uniqueName('normalCameraUiRoot'))
+        cameraNode = Camera(self.uniqueName('normalCameraUiCamera'))
+        self.normalCameraUiLens = OrthographicLens()
+        self.normalCameraUiLens.setFilmSize(2.0 * aspect, 2.0)
+        self.normalCameraUiLens.setNearFar(-1000, 1000)
+        cameraNode.setLens(self.normalCameraUiLens)
+        cameraNode.setScene(self.normalCameraUiRoot)
+        self.normalCameraUiCamera = render.attachNewNode(cameraNode)
+        self.normalCameraUiDisplayRegion = self.normalCameraWindow.makeMonoDisplayRegion()
+        self.normalCameraUiDisplayRegion.setSort(10)
+        self.normalCameraUiDisplayRegion.setClearDepthActive(True)
+        self.normalCameraUiDisplayRegion.setCamera(self.normalCameraUiCamera)
+        self.normalCameraBonusTimer = ToontownTimer.ToontownTimer()
+        self.normalCameraBonusTimer.reparentTo(self.normalCameraUiRoot)
+        self.normalCameraBonusTimer.hide()
+        self.__positionNormalCameraTimer(aspect)
+
+    def __positionNormalCameraTimer(self, aspect):
+        if self.normalCameraBonusTimer:
+            self.normalCameraBonusTimer.setPos(aspect - 0.17, 0, 0.83)
+
+    def __useNormalCameraForAudio(self):
+        if self.originalSfxLocalizedVolume or not self.normalCamera:
+            return
+        self.originalSfxLocalizedVolume = base.sfxPlayer.getLocalizedVolume
+
+        def getLocalizedVolume(node, listenerNode=None, cutoff=None):
+            if listenerNode is None and self.normalCamera:
+                listenerNode = self.normalCamera
+            return self.originalSfxLocalizedVolume(node, listenerNode, cutoff)
+
+        base.sfxPlayer.getLocalizedVolume = getLocalizedVolume
+
+    def __restoreDefaultAudioListener(self):
+        if self.originalSfxLocalizedVolume:
+            base.sfxPlayer.getLocalizedVolume = self.originalSfxLocalizedVolume
+            self.originalSfxLocalizedVolume = None
 
     def __closeNormalCameraWindow(self):
         normalWindow = self.normalCameraWindow
+        if self.normalCameraBonusTimer:
+            self.normalCameraBonusTimer.destroy()
+        if self.normalCameraUiDisplayRegion and normalWindow:
+            normalWindow.removeDisplayRegion(self.normalCameraUiDisplayRegion)
+        if self.normalCameraUiCamera:
+            self.normalCameraUiCamera.removeNode()
+        if self.normalCameraUiRoot:
+            self.normalCameraUiRoot.removeNode()
+        self.normalCameraBonusTimer = None
+        self.normalCameraUiDisplayRegion = None
+        self.normalCameraUiCamera = None
+        self.normalCameraUiLens = None
+        self.normalCameraUiRoot = None
         self.normalCameraWindow = None
         self.normalCamera = None
         self.normalCameraLens = None
@@ -1175,7 +1287,11 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             width = self.normalCameraWindow.getXSize()
             height = self.normalCameraWindow.getYSize()
             if height:
-                self.normalCameraLens.setAspectRatio(float(width) / height)
+                aspect = float(width) / height
+                self.normalCameraLens.setAspectRatio(aspect)
+                if self.normalCameraUiLens:
+                    self.normalCameraUiLens.setFilmSize(2.0 * aspect, 2.0)
+                    self.__positionNormalCameraTimer(aspect)
 
     def __updateTopDownCamera(self, task):
         if not self.stunMode or getattr(self, 'state', None) != 'BattleThree':
@@ -1207,7 +1323,23 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                     offset = cursorPoint - toonPos
                     if offset[0] * offset[0] + offset[1] * offset[1] > 0.0001:
                         heading = math.degrees(math.atan2(-offset[0], offset[1]))
+                        currentHeading = localAvatar.getH(render)
+                        headingDelta = (heading - currentHeading + 180.0) % 360.0 - 180.0
                         localAvatar.setH(render, heading)
+                        if abs(headingDelta) > 0.1:
+                            now = globalClock.getFrameTime()
+                            wasCursorRotating = now < getattr(
+                                localAvatar, 'cursorRotationAnimDeadline', 0.0)
+                            cursorRotSpeed = 1.0 if headingDelta > 0 else -1.0
+                            localAvatar.cursorRotationAnimSpeed = cursorRotSpeed
+                            localAvatar.cursorRotationAnimDeadline = now + 0.1
+                            # The movement tracker runs before this camera task.
+                            # Start the animation on the first turning frame;
+                            # subsequent frames are sustained by the deadline
+                            # above instead of restarting the walk loop.
+                            if not wasCursorRotating:
+                                speed, unusedRotSpeed, unusedSlideSpeed = localAvatar.controlManager.getSpeeds()
+                                localAvatar.setSpeed(speed, cursorRotSpeed)
             lawyerDoId = self.__getLawyerUnderCursor(mousePos)
             if self.specialThrowActiveKey is not None:
                 if lawyerDoId is not None:
@@ -1220,8 +1352,12 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
                     self.relaxHoveredLawyer = None
                 elif lawyerDoId != self.relaxHoveredLawyer:
                     self.relaxHoveredLawyer = lawyerDoId
-                    if localAvatar.beginSpecialPieThrow():
-                        localAvatar.releaseSpecialPieThrow()
+                    now = globalClock.getFrameTime()
+                    lastThrow = self.relaxLastThrowTimes.get(lawyerDoId, -float('inf'))
+                    if now - lastThrow >= self.relaxGracePeriod:
+                        if (localAvatar.beginSpecialPieThrow() and
+                                localAvatar.releaseSpecialPieThrow()):
+                            self.relaxLastThrowTimes[lawyerDoId] = now
         return Task.cont
 
     def loadCannons(self):
@@ -2567,6 +2703,8 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
     def hideBonusTimer(self):
         if self.bonusTimer:
             self.bonusTimer.hide()
+        if self.normalCameraBonusTimer:
+            self.normalCameraBonusTimer.hide()
 
     def enteredBonusState(self):
         self.witnessToon.clearChat()
@@ -2581,6 +2719,9 @@ class DistributedLawbotBoss(DistributedBossCog.DistributedBossCog, FSM.FSM):
             self.bonusTimer.posInTopRightCorner()
         self.bonusTimer.show()
         self.bonusTimer.countdown(bonusDuration, self.hideBonusTimer)
+        if self.normalCameraBonusTimer:
+            self.normalCameraBonusTimer.show()
+            self.normalCameraBonusTimer.countdown(bonusDuration, self.hideBonusTimer)
 
     def showStunLevel(self, stunLevel):
         if not self.stunMode:

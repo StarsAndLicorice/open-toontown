@@ -22,3 +22,15 @@ be refreshed while active.
 Each completed group level displays `Stun xN` above the local Toon, where `N`
 is the maximum stun level currently held by any lawyer. The previous display is
 replaced if another group level is completed before it fades.
+
+In top-down view, cursor-driven rotation uses the normal walking animation but
+does not override an active pie animation. A short debounce keeps smooth cursor
+turning in one continuous animation instead of restarting it each frame.
+Positional sounds use the normal
+camera as their default listener, and the stun-bonus clock is rendered in a
+timer-only overlay in the normal-camera window.
+
+Relax mode remembers the last successful throw time for each lawyer. Returning
+to that lawyer cannot trigger another Relax throw until the configured grace
+period has elapsed; the UI adjusts this period in 10 ms increments and defaults
+to 100 ms.
